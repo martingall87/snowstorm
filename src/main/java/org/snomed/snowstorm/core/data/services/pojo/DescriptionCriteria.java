@@ -4,6 +4,7 @@ import org.snomed.snowstorm.core.data.services.DescriptionService;
 import org.springframework.util.CollectionUtils;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 
 import static org.snomed.snowstorm.config.Config.DEFAULT_LANGUAGE_CODES;
@@ -24,6 +25,7 @@ public class DescriptionCriteria {
 	private Set<Long> preferredIn;
 	private Set<Long> acceptableIn;
 	private Set<Long> preferredOrAcceptableIn;
+	private List<DisjunctionAcceptabilityCriteria> disjunctionAcceptabilityCriteria;
 
 	public boolean hasDescriptionCriteria() {
 		return term != null
@@ -31,7 +33,8 @@ public class DescriptionCriteria {
 				|| semanticTag != null
 				|| !CollectionUtils.isEmpty(preferredIn)
 				|| !CollectionUtils.isEmpty(acceptableIn)
-				|| !CollectionUtils.isEmpty(preferredOrAcceptableIn);
+				|| !CollectionUtils.isEmpty(preferredOrAcceptableIn)
+				|| !CollectionUtils.isEmpty(disjunctionAcceptabilityCriteria);
 	}
 
 	public DescriptionCriteria term(String term) {
@@ -172,6 +175,56 @@ public class DescriptionCriteria {
 
 	public DescriptionService.SearchMode getSearchMode() {
 		return searchMode;
+	}
+
+	public List<DisjunctionAcceptabilityCriteria> getDisjunctionAcceptabilityCriteria() {
+		return disjunctionAcceptabilityCriteria;
+	}
+
+	public DescriptionCriteria disjunctionAcceptabilityCriteria(List<DisjunctionAcceptabilityCriteria> disjunctionAcceptabilityCriteria) {
+		this.disjunctionAcceptabilityCriteria = disjunctionAcceptabilityCriteria;
+		return this;
+	}
+
+	public static class DisjunctionAcceptabilityCriteria {
+
+		final private Set<Long> preferred;
+
+		final private Set<Long> acceptable;
+
+		private Set<Long> preferredOrAcceptable;
+
+		DisjunctionAcceptabilityCriteria(Set<Long> preferred, Set<Long> acceptable, Set<Long> preferredOrAcceptable) {
+			this.preferred = preferred;
+			this.acceptable = acceptable;
+			this.preferredOrAcceptable = preferredOrAcceptable;
+		}
+
+		public Set<Long> getPreferred() {
+			return preferred;
+		}
+
+		public Set<Long> getAcceptable() {
+			return acceptable;
+		}
+
+		public Set<Long> getPreferredOrAcceptable() {
+			return preferredOrAcceptable;
+		}
+
+		public boolean hasMultiple() {
+			int counter = 0;
+			if (preferred != null && !preferred.isEmpty()) {
+				counter++;
+			}
+			if (acceptable != null && !acceptable.isEmpty()) {
+				counter++;
+			}
+			if (preferredOrAcceptable != null && !preferredOrAcceptable.isEmpty()) {
+				counter++;
+			}
+			return counter > 1;
+		}
 	}
 
 }
