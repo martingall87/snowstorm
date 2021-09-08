@@ -73,17 +73,12 @@ class DroolsValidationServiceTest extends AbstractTest {
         final Concept updatedConcept = conceptService.update(foundConcept, DEFAULT_BRANCH);
         assertEquals(1, updatedConcept.getClassAxioms().size());
 		List<InvalidContent> invalidContents = droolValidationService.validateConcepts(DEFAULT_BRANCH, Collections.singleton(updatedConcept), false);
-        assertEquals(3, invalidContents.size());
+        assertEquals(2, invalidContents.size());
 
         int index = 0;
         assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
         assertEquals("Test resources were not available so assertions like case significance and US specific terms checks will not have run.", invalidContents.get(index).getMessage());
         assertEquals("setup-issue", invalidContents.get(index).getRuleId());
-
-        index++;
-        assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
-        assertEquals("A concept's semantic tags should be compatible with those of the active parents.", invalidContents.get(index).getMessage());
-		assertEquals("7f622c65-6fcc-4db7-9903-e9ec2aea5be5", invalidContents.get(index).getRuleId());
 
         index++;
         assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
@@ -102,7 +97,7 @@ class DroolsValidationServiceTest extends AbstractTest {
 
         assertEquals(0, updatedConcept.getClassAxioms().size());
 		List<InvalidContent> invalidContents = droolValidationService.validateConcepts(DEFAULT_BRANCH, Collections.singleton(updatedConcept), false);
-        assertEquals(4, invalidContents.size());
+        assertEquals(3, invalidContents.size());
 
         int index = 0;
         assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
@@ -111,10 +106,6 @@ class DroolsValidationServiceTest extends AbstractTest {
         index++;
         assertEquals(Severity.ERROR, invalidContents.get(index).getSeverity());
         assertEquals("Active concepts must have at least one IS A relationship.", invalidContents.get(index).getMessage());
-
-        index++;
-        assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
-        assertEquals("A concept's semantic tags should be compatible with those of the active parents.", invalidContents.get(index).getMessage());
 
         index++;
         assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
@@ -148,15 +139,11 @@ class DroolsValidationServiceTest extends AbstractTest {
         }
 
 		List<InvalidContent> invalidContents = droolValidationService.validateConcepts(DEFAULT_BRANCH, Collections.singleton(updatedConcept), false);
-        assertEquals(3, invalidContents.size());
+        assertEquals(2, invalidContents.size());
 
         int index = 0;
         assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
         assertEquals("Test resources were not available so assertions like case significance and US specific terms checks will not have run.", invalidContents.get(index).getMessage());
-
-        index++;
-        assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
-        assertEquals("A concept's semantic tags should be compatible with those of the active parents.", invalidContents.get(index).getMessage());
 
         index++;
         assertEquals(Severity.WARNING, invalidContents.get(index).getSeverity());
