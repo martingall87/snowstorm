@@ -10,6 +10,7 @@ import org.snomed.snowstorm.rest.ControllerHelper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.hl7.fhir.r4.model.StringType;
+import org.hl7.fhir.r4.model.Type;
 import org.hl7.fhir.r4.model.ValueSet;
 
 import java.util.List;
@@ -180,6 +181,11 @@ public final class ValueSetExpansionParameters {
 			this.countStr = countStr;
 			return this;
 		}
+		
+		public final BuilderFromGET withCount(Integer count) {
+			this.countStr = count.toString();
+			return this;
+		}
 
 		public final BuilderFromGET withSystemVersion(final StringType systemVersion) {
 			this.systemVersion = systemVersion;
@@ -191,7 +197,6 @@ public final class ValueSetExpansionParameters {
 			return this;
 		}
 
-		@SuppressWarnings("unchecked")
 		public final ValueSetExpansionParameters build() {
 			return new ValueSetExpansionParameters(url == null ? null : url,
 					filter == null ? null : filter,
@@ -216,10 +221,10 @@ public final class ValueSetExpansionParameters {
 		private ParametersParameterComponent designations;
 		private ParametersParameterComponent displayLanguage;
 		private ParametersParameterComponent offsetStr;
-		private ParametersParameterComponent countStr;
+		private String countStr;
 		private ParametersParameterComponent systemVersion;
 		private ParametersParameterComponent forceSystemVersion;
-		private ParametersParameterComponent valueSet;
+		private ValueSet valueSet;
 
 		public final BuilderFromPOST withUrl(final ParametersParameterComponent url) {
 			this.url = url;
@@ -257,7 +262,12 @@ public final class ValueSetExpansionParameters {
 		}
 
 		public final BuilderFromPOST withCount(final ParametersParameterComponent countStr) {
-			this.countStr = countStr;
+			this.countStr =  String.valueOf(countStr.getValue());
+			return this;
+		}
+		
+		public final BuilderFromPOST withCount(Integer count) {
+			this.countStr = count.toString();
 			return this;
 		}
 
@@ -271,8 +281,12 @@ public final class ValueSetExpansionParameters {
 			return this;
 		}
 
-		public final BuilderFromPOST withValueSet(final ParametersParameterComponent valueSet) {
-			this.valueSet = valueSet;
+		public final BuilderFromPOST withValueSet(final Object valueSet) {
+			if (valueSet instanceof ParametersParameterComponent) {
+				this.valueSet = (ValueSet)((ParametersParameterComponent)valueSet).getResource();
+			} else {
+				this.valueSet = (ValueSet)valueSet;
+			}
 			return this;
 		}
 
@@ -285,10 +299,10 @@ public final class ValueSetExpansionParameters {
 					designations == null ? null : (List<String>) designations.getValue(),
 					displayLanguage == null ? null : String.valueOf(displayLanguage.getValue()),
 					offsetStr == null ? null : String.valueOf(offsetStr.getValue()),
-					countStr == null ? null : String.valueOf(countStr.getValue()),
+					countStr == null ? null : countStr,
 					systemVersion == null ? null : (StringType) systemVersion.getValue(),
 					forceSystemVersion == null ? null : (StringType) forceSystemVersion.getValue(),
-					valueSet == null ? null : (ValueSet) valueSet.getResource());
+					valueSet == null ? null : valueSet);
 		}
 	}
 }

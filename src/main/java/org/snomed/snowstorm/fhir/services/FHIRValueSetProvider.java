@@ -10,8 +10,10 @@ import ca.uhn.fhir.rest.server.IResourceProvider;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.*;
 import org.hl7.fhir.r4.model.OperationOutcome.IssueType;
+import org.hl7.fhir.r4.model.ValueSet.ConceptReferenceComponent;
 import org.hl7.fhir.r4.model.ValueSet.ConceptSetComponent;
 import org.hl7.fhir.r4.model.ValueSet.ValueSetComposeComponent;
+import org.hl7.fhir.r4.model.ValueSet.ValueSetExpansionContainsComponent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.snomed.snowstorm.core.data.domain.Concept;
@@ -32,6 +34,7 @@ import org.snomed.snowstorm.fhir.pojo.ValueSetExpansionParameters;
 import org.snomed.snowstorm.fhir.repositories.FHIRValuesetRepository;
 import org.snomed.snowstorm.rest.ControllerHelper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -73,22 +76,47 @@ public class FHIRValueSetProvider implements IResourceProvider, FHIRConstants {
 	@Autowired
 	private FHIRHelper fhirHelper;
 	
+	@Value("#{'${fhir.vs.explicit-enumerations}'.split(',')}")
+	private List<String> explictEnumerations;
+	
 	public static int DEFAULT_PAGESIZE = 1000;
 	
 	private final Logger logger = LoggerFactory.getLogger(getClass());
 	
 	@Read()
-	public ValueSet getValueSet(@IdParam IdType id) {
+	public ValueSet getValueSet(
+			HttpServletRequest request,
+			@IdParam IdType id) throws FHIROperationException {
 		Optional<ValueSetWrapper> vsOpt = valuesetRepository.findById(id.getIdPart());
 		if (vsOpt.isPresent()) {
 			ValueSet vs = vsOpt.get().getValueSet();
+			
 			//If we're not calling the expansion operation, don't include that element
 			vs.setExpansion(null);
+			
+			//Is this one of the ValueSets where we're going to turn an intensionally definition into 
+			//an explicit enumeration?
+			if (explictEnumerations.contains(id.getIdPart())) {
+				//This is going to be super expensive because FHIR has no support for paging in this object
+				vs = expand(id, request, getValueSetExpansionParameters(vs));
+				convertExpansionToCompose(vs);
+			}
 			return vs;
 		}
 		return null;
 	}
 	
+	private void convertExpansionToCompose(ValueSet vs) {
+		List<ConceptSetComponent> conceptSets = new ArrayList<>();
+		ConceptSetComponent enumeration = new ConceptSetComponent();
+		conceptSets.add(enumeration);
+		vs.getCompose().setInclude(conceptSets);
+		
+		for (ValueSetExpansionContainsComponent concept : vs.getExpansion().getContains()) {
+			enumeration.addConcept(new ConceptReferenceComponent(concept.getCodeElement()));
+		}
+	}
+
 	@Create()
 	public MethodOutcome createValueset(@IdParam IdType id, @ResourceParam ValueSet vs) throws FHIROperationException {
 		MethodOutcome outcome = new MethodOutcome();
@@ -239,6 +267,14 @@ public class FHIRValueSetProvider implements IResourceProvider, FHIRConstants {
 				.withForceSystemVersion(findParameterOrNull(parametersParameterComponents, "force-system-version"))
 				.withValueSet(findParameterOrNull(parametersParameterComponents, "valueSet")).build();
 	}
+	
+	private ValueSetExpansionParameters getValueSetExpansionParameters(ValueSet vs) {
+		return ValueSetExpansionParameters.newBuilderFromPOST()
+				.withValueSet(vs)
+				.withCount(Integer.MAX_VALUE)
+				.build();
+	}
+
 
 	private ValueSetExpansionParameters getValueSetExpansionParameters(final String url, final String filter, final BooleanType activeType, final BooleanType includeDesignationsType,
 			final List<String> designations, final String displayLanguage, final String offsetStr, final String countStr, final StringType systemVersion, final StringType forceSystemVersion) {
@@ -280,7 +316,7 @@ public class FHIRValueSetProvider implements IResourceProvider, FHIRConstants {
 			@OperationParam(name="context") String context,
 			@OperationParam(name="displayLanguage") String displayLanguage) throws FHIROperationException {
 		List<LanguageDialect> languageDialects = fhirHelper.getLanguageDialects(null, request);
-		return validateCode(id, url, codeSystem, code, display, version, date, coding, codeableConcept, context, abstractBool, displayLanguage, languageDialects);
+		return validateCode(request, id, url, codeSystem, code, display, version, date, coding, codeableConcept, context, abstractBool, displayLanguage, languageDialects);
 	}
 
 	@Operation(name="$validate-code", idempotent=true)
@@ -299,10 +335,10 @@ public class FHIRValueSetProvider implements IResourceProvider, FHIRConstants {
 			@OperationParam(name="context") String context,
 			@OperationParam(name="displayLanguage") String displayLanguage) throws FHIROperationException {
 		List<LanguageDialect> languageDialects = fhirHelper.getLanguageDialects(null, request);
-		return validateCode(null, url, codeSystem, code, display, version, date, coding, codeableConcept, context, abstractBool, displayLanguage, languageDialects);
+		return validateCode(request, null, url, codeSystem, code, display, version, date, coding, codeableConcept, context, abstractBool, displayLanguage, languageDialects);
 	}
 	
-	private Parameters validateCode(IdType id, UriType urlType, StringType codeSystem, CodeType code, String display,
+	private Parameters validateCode(HttpServletRequest request, IdType id, UriType urlType, StringType codeSystem, CodeType code, String display,
 			StringType version, DateTimeType date, Coding coding, Coding codeableConcept, String context, 
 			BooleanType abstractBool, String displayLanguage, 
 			List<LanguageDialect> languageDialects) throws FHIROperationException {
@@ -325,7 +361,7 @@ public class FHIRValueSetProvider implements IResourceProvider, FHIRConstants {
 			}
 		}
 		//From either a saved VS instance or some implcit url, can we recover some ECL?
-		String ecl = getECL(id, url == null? null : url);
+		String ecl = getECL(request, id, url == null? null : url);
 		if (ecl != null) { 
 			String conceptId = fhirHelper.recoverConceptId(code, coding);
 			BranchPath branchPath = fhirHelper.getBranchPathFromURI(codeSystem);
@@ -354,11 +390,11 @@ public class FHIRValueSetProvider implements IResourceProvider, FHIRConstants {
 		}
 	}
 	
-	private String getECL(IdType id, String url) throws FHIROperationException {
+	private String getECL(HttpServletRequest request, IdType id, String url) throws FHIROperationException {
 		ValueSet vs = null;
 		if (id != null) {
 			logger.info("Expanding '{}'",id.getIdPart());
-			vs = getValueSet(id);
+			vs = getValueSet(request, id);
 			if (vs == null) {
 				return null; // Will be translated into a 404
 			}
@@ -406,7 +442,7 @@ public class FHIRValueSetProvider implements IResourceProvider, FHIRConstants {
 		
 		if (id != null && vs == null) {
 			logger.info("Expanding '{}'",id.getIdPart());
-			vs = getValueSet(id);
+			vs = getValueSet(request,id);
 			if (vs == null) {
 				return null; // Will be translated into a 404
 			}
