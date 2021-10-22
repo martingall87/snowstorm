@@ -156,7 +156,7 @@ public class ImportService {
 			case DELTA:
 				return deltaImport(releaseFileStream, job, branchPath, patchReleaseVersion, releaseImporter, loadingProfile);
 			case SNAPSHOT:
-				return snapshotImport(releaseFileStream, branchPath, patchReleaseVersion, releaseImporter, loadingProfile);
+				return snapshotImport(releaseFileStream, job, branchPath, patchReleaseVersion, releaseImporter, loadingProfile);
 			case FULL:
 				return fullImport(releaseFileStream, branchPath, releaseImporter, loadingProfile);
 			default:
@@ -194,6 +194,7 @@ public class ImportService {
 
 	private Integer fullImport(final InputStream releaseFileStream, final String branchPath, final ReleaseImporter releaseImporter,
 			final LoadingProfile loadingProfile) throws ReleaseImportException {
+
 		final FullImportComponentFactoryImpl importComponentFactory = getFullImportComponentFactory(branchPath);
 		try {
 			releaseImporter.loadFullReleaseFiles(releaseFileStream, loadingProfile, importComponentFactory);
@@ -204,10 +205,12 @@ public class ImportService {
 		}
 	}
 
-	private Integer snapshotImport(final InputStream releaseFileStream, final String branchPath, final Integer patchReleaseVersion,
+	private Integer snapshotImport(final InputStream releaseFileStream, ImportJob job, final String branchPath, final Integer patchReleaseVersion,
 			final ReleaseImporter releaseImporter, final LoadingProfile loadingProfile) throws ReleaseImportException {
+
+		// If we are not creating a new version copy the release fields from the existing components
 		final ImportComponentFactoryImpl importComponentFactory =
-				getImportComponentFactory(branchPath, patchReleaseVersion, false, false);
+				getImportComponentFactory(branchPath, patchReleaseVersion, !job.isCreateCodeSystemVersion(), job.isClearEffectiveTimes());
 		try {
 			releaseImporter.loadSnapshotReleaseFiles(releaseFileStream, loadingProfile, importComponentFactory);
 			return importComponentFactory.getMaxEffectiveTime();
@@ -219,6 +222,7 @@ public class ImportService {
 
 	private Integer deltaImport(final InputStream releaseFileStream, final ImportJob job, final String branchPath, final Integer patchReleaseVersion,
 			final ReleaseImporter releaseImporter, final LoadingProfile loadingProfile) throws ReleaseImportException {
+
 		// If we are not creating a new version copy the release fields from the existing components
 		final ImportComponentFactoryImpl importComponentFactory =
 				getImportComponentFactory(branchPath, patchReleaseVersion, !job.isCreateCodeSystemVersion(), job.isClearEffectiveTimes());
