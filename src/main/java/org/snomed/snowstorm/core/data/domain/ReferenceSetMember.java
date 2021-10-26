@@ -235,6 +235,9 @@ public class ReferenceSetMember extends SnomedComponent<ReferenceSetMember> impl
 		return "ReferenceSetMember{" +
 				"memberId='" + memberId + '\'' +
 				", effectiveTime='" + getEffectiveTimeI() + '\'' +
+				", released='" + isReleased() + '\'' +
+				", releasedEffectiveTime='" + getReleasedEffectiveTime() + '\'' +
+				", releasedHash='" + getReleaseHash() + '\'' +
 				", active=" + active +
 				", moduleId='" + getModuleId() + '\'' +
 				", refsetId='" + refsetId + '\'' +
