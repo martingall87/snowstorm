@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Set;
 
 public interface SRefinement {
-	void addCriteria(RefinementBuilder refinementBuilder);
+	void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds);
 
 	@JsonIgnore
 	Set<String> getConceptIds();

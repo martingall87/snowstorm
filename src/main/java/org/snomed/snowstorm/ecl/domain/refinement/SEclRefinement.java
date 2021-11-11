@@ -19,12 +19,12 @@ import static org.springframework.util.CollectionUtils.isEmpty;
 public class SEclRefinement extends EclRefinement implements SRefinement {
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
-		((SSubRefinement)subRefinement).addCriteria(refinementBuilder);
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
+		((SSubRefinement)subRefinement).addCriteria(refinementBuilder, inactiveConceptIds);
 
 		if (conjunctionSubRefinements != null) {
 			for (SubRefinement conjunctionSubRefinement : conjunctionSubRefinements) {
-				((SSubRefinement)conjunctionSubRefinement).addCriteria(refinementBuilder);
+				((SSubRefinement)conjunctionSubRefinement).addCriteria(refinementBuilder, inactiveConceptIds);
 			}
 		}
 		if (disjunctionSubRefinements != null && !disjunctionSubRefinements.isEmpty()) {
@@ -33,7 +33,7 @@ public class SEclRefinement extends EclRefinement implements SRefinement {
 			for (SubRefinement disjunctionSubRefinement : disjunctionSubRefinements) {
 				BoolQueryBuilder shouldQuery = boolQuery();
 				shouldQueries.should(shouldQuery);
-				((SSubRefinement)disjunctionSubRefinement).addCriteria(new SubRefinementBuilder(refinementBuilder, shouldQuery));
+				((SSubRefinement)disjunctionSubRefinement).addCriteria(new SubRefinementBuilder(refinementBuilder, shouldQuery), inactiveConceptIds);
 			}
 		}
 	}

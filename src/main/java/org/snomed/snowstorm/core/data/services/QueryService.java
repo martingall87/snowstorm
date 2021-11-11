@@ -389,9 +389,13 @@ public class QueryService implements ApplicationContextAware {
 		SearchHits<QueryConcept> searchHits = elasticsearchTemplate.search(searchQuery, QueryConcept.class);
 		return searchHits.stream().map(SearchHit::getContent).map(QueryConcept::getConceptIdL).collect(Collectors.toSet());
 	}
-
+	
 	public Set<Long> findConceptIdsInReferenceSet(BranchCriteria branchCriteria, String referenceSetId) {
-		return memberService.findConceptsInReferenceSet(branchCriteria, referenceSetId);
+		return memberService.findConceptsInReferenceSet(branchCriteria, referenceSetId, null);
+	}
+
+	public Set<Long> findConceptIdsInReferenceSet(BranchCriteria branchCriteria, String referenceSetId, Set<String> inactiveConceptIds) {
+		return memberService.findConceptsInReferenceSet(branchCriteria, referenceSetId, inactiveConceptIds);
 	}
 
 	public List<Long> findRelationshipDestinationIds(Collection<Long> sourceConceptIds, List<Long> attributeTypeIds, BranchCriteria branchCriteria, boolean stated) {

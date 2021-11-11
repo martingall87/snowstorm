@@ -10,13 +10,13 @@ import java.util.Set;
 public class SSubRefinement extends SubRefinement implements SRefinement {
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
 		if (eclAttributeSet != null) {
-			((SEclAttributeSet)eclAttributeSet).addCriteria(refinementBuilder);
+			((SEclAttributeSet)eclAttributeSet).addCriteria(refinementBuilder, inactiveConceptIds);
 		} else if (eclAttributeGroup != null) {
-			((SEclAttributeGroup)eclAttributeGroup).addCriteria(refinementBuilder);
+			((SEclAttributeGroup)eclAttributeGroup).addCriteria(refinementBuilder, inactiveConceptIds);
 		} else {
-			((SEclRefinement)eclRefinement).addCriteria(refinementBuilder);
+			((SEclRefinement)eclRefinement).addCriteria(refinementBuilder, inactiveConceptIds);
 		}
 	}
 

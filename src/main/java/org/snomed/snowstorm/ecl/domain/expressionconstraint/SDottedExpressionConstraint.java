@@ -72,8 +72,8 @@ public class SDottedExpressionConstraint extends DottedExpressionConstraint impl
 	}
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
-		((SSubExpressionConstraint)subExpressionConstraint).addCriteria(refinementBuilder);
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
+		((SSubExpressionConstraint)subExpressionConstraint).addCriteria(refinementBuilder, inactiveConceptIds);
 	}
 
 	public void toString(StringBuffer buffer) {

@@ -1,7 +1,6 @@
 package org.snomed.snowstorm.ecl.domain.refinement;
 
 import org.snomed.langauges.ecl.domain.refinement.SubAttributeSet;
-import org.snomed.snowstorm.ecl.deserializer.ECLModelDeserializer;
 import org.snomed.snowstorm.ecl.domain.RefinementBuilder;
 import org.snomed.snowstorm.ecl.domain.SRefinement;
 import org.snomed.snowstorm.ecl.domain.expressionconstraint.MatchContext;
@@ -11,11 +10,11 @@ import java.util.Set;
 public class SSubAttributeSet extends SubAttributeSet implements SRefinement {
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
 		if (attribute != null) {
-			((SEclAttribute)attribute).addCriteria(refinementBuilder);
+			((SEclAttribute)attribute).addCriteria(refinementBuilder, inactiveConceptIds);
 		} else {
-			((SEclAttributeSet)attributeSet).addCriteria(refinementBuilder);
+			((SEclAttributeSet)attributeSet).addCriteria(refinementBuilder, inactiveConceptIds);
 		}
 	}
 

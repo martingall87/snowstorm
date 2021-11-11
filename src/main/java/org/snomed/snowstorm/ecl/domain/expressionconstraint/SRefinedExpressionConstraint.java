@@ -44,9 +44,9 @@ public class SRefinedExpressionConstraint extends RefinedExpressionConstraint im
 	}
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
-		((SSubExpressionConstraint)subexpressionConstraint).addCriteria(refinementBuilder);
-		((SEclRefinement)eclRefinement).addCriteria(refinementBuilder);
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
+		((SSubExpressionConstraint)subexpressionConstraint).addCriteria(refinementBuilder, inactiveConceptIds);
+		((SEclRefinement)eclRefinement).addCriteria(refinementBuilder, inactiveConceptIds);
 
 		if (refinementBuilder.isInclusionFilterRequired()) {
 			refinementBuilder.setInclusionFilter(queryConcept -> {

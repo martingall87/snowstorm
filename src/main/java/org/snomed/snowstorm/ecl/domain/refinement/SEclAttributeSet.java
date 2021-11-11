@@ -21,7 +21,7 @@ import static org.springframework.util.CollectionUtils.isEmpty;
 public class SEclAttributeSet extends EclAttributeSet implements SRefinement {
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
 		// In Elasticsearch disjunction (OR) clauses are written by adding a 'must' clause and appending 'should' clauses to that.
 		// The first two types of refinements have to be part of the first 'should' query because they may be the
 		// first half of a disjunction clause.
@@ -32,17 +32,17 @@ public class SEclAttributeSet extends EclAttributeSet implements SRefinement {
 		shouldQueries.should(firstShouldQuery);
 
 		SubRefinementBuilder firstShouldRefinementBuilder = new SubRefinementBuilder(refinementBuilder, firstShouldQuery);
-		((SSubAttributeSet)subAttributeSet).addCriteria(firstShouldRefinementBuilder);
+		((SSubAttributeSet)subAttributeSet).addCriteria(firstShouldRefinementBuilder, inactiveConceptIds);
 		if (conjunctionAttributeSet != null) {
 			for (SubAttributeSet attributeSet : conjunctionAttributeSet) {
-				((SSubAttributeSet)attributeSet).addCriteria(firstShouldRefinementBuilder);
+				((SSubAttributeSet)attributeSet).addCriteria(firstShouldRefinementBuilder, inactiveConceptIds);
 			}
 		}
 		if (disjunctionAttributeSet != null && !disjunctionAttributeSet.isEmpty()) {
 			for (SubAttributeSet attributeSet : disjunctionAttributeSet) {
 				BoolQueryBuilder additionalShouldQuery = boolQuery();
 				shouldQueries.should(additionalShouldQuery);
-				((SSubAttributeSet)attributeSet).addCriteria(new SubRefinementBuilder(refinementBuilder, additionalShouldQuery));
+				((SSubAttributeSet)attributeSet).addCriteria(new SubRefinementBuilder(refinementBuilder, additionalShouldQuery), inactiveConceptIds);
 			}
 		}
 	}

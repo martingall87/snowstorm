@@ -252,6 +252,22 @@ public class ConceptService extends ComponentService {
 		}
 		return conceptsNotFound;
 	}
+	
+	public Collection<String> getInactiveIds(Collection<String> ids, BranchCriteria branchCriteria) {
+		final BoolQueryBuilder builder = boolQuery()
+				.must(branchCriteria.getEntityBranchCriteria(Concept.class))
+				.must(termsQuery(Concept.Fields.CONCEPT_ID, ids))
+				.must(termQuery(Concept.Fields.ACTIVE, false));
+
+		SearchHits<Concept> searchHits = elasticsearchTemplate.search(new NativeSearchQueryBuilder()
+				.withQuery(builder)
+				.withPageable(LARGE_PAGE)
+				.build(), Concept.class);
+		
+		return searchHits.stream()
+				.map(h -> h.getContent().getId())
+				.collect(Collectors.toList());
+	}
 
 	public Page<Concept> findAll(String path, PageRequest pageRequest) {
 		return findAll(path, DEFAULT_LANGUAGE_DIALECTS, pageRequest);

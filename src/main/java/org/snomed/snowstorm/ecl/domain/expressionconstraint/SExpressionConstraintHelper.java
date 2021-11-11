@@ -11,7 +11,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 public class SExpressionConstraintHelper {
 
@@ -27,7 +29,9 @@ public class SExpressionConstraintHelper {
 
 		BoolQueryBuilder query = ConceptSelectorHelper.getBranchAndStatedQuery(branchCriteria.getEntityBranchCriteria(QueryConcept.class), stated);
 		RefinementBuilder refinementBuilder = new RefinementBuilderImpl(query, path, branchCriteria, stated, queryService);
-		sExpressionConstraint.addCriteria(refinementBuilder);// This can add an inclusionFilter to the refinementBuilder.
+		//The criteria of the ECL expression is here added to the refinement Builder, which may include inactive concepts
+		Set<String> inactiveConcepts = new HashSet<>();
+		sExpressionConstraint.addCriteria(refinementBuilder, inactiveConcepts);// This can add an inclusionFilter to the refinementBuilder.
 		return Optional.of(ConceptSelectorHelper.fetchIds(query, conceptIdFilter, refinementBuilder.getInclusionFilter(), pageRequest, queryService));
 	}
 

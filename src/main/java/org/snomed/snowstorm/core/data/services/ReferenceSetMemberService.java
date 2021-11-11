@@ -99,6 +99,9 @@ public class ReferenceSetMemberService extends ComponentService {
 	private ReferenceSetTypesConfigurationService referenceSetTypesConfigurationService;
 
 	@Autowired
+	private ConceptService conceptService;
+	
+	@Autowired
 	private ECLQueryService eclQueryService;
 
 	private final Cache<String, AsyncRefsetMemberChangeBatch> batchChanges = CacheBuilder.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
@@ -420,8 +423,12 @@ public class ReferenceSetMemberService extends ComponentService {
 
 		return doSaveBatchComponents(members, commit, ReferenceSetMember.Fields.MEMBER_ID, memberRepository);
 	}
-
+	
 	Set<Long> findConceptsInReferenceSet(BranchCriteria branchCriteria, String referenceSetId) {
+		return findConceptsInReferenceSet(branchCriteria, referenceSetId, null);
+	}
+
+	Set<Long> findConceptsInReferenceSet(BranchCriteria branchCriteria, String referenceSetId, Set<String> inactivateConceptIds) {
 		// Build query
 
 		BoolQueryBuilder boolQuery = boolQuery().must(branchCriteria.getEntityBranchCriteria(ReferenceSetMember.class))
@@ -441,11 +448,18 @@ public class ReferenceSetMemberService extends ComponentService {
 				.build();
 
 		// Stream results
-		Set<Long> conceptIds = new LongArraySet();
+		List<String> conceptIds = new ArrayList<>();
 		try (SearchHitsIterator<ReferenceSetMember> stream = elasticsearchTemplate.searchForStream(query, ReferenceSetMember.class)) {
-			stream.forEachRemaining(member -> conceptIds.add(parseLong(member.getContent().getReferencedComponentId())));
+			stream.forEachRemaining(member -> conceptIds.add(member.getContent().getReferencedComponentId()));
 		}
-		return conceptIds;
+		Set<Long> conceptIdsL = new LongArraySet();
+		conceptIds.forEach(c -> conceptIdsL.add(parseLong(c)));
+		
+		//Do we want to separate out the inactive concepts?
+		if (inactivateConceptIds != null) {
+			inactivateConceptIds.addAll(conceptService.getInactiveIds(conceptIds, branchCriteria));
+		}
+		return conceptIdsL;
 	}
 
 	public void init() {

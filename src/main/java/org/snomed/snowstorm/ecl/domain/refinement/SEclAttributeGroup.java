@@ -17,12 +17,12 @@ public class SEclAttributeGroup extends EclAttributeGroup implements SRefinement
 	}
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
 		// All grouping checks require the inclusion filter because it's not supported by the index
 		refinementBuilder.inclusionFilterRequired();
 
 		BoolQueryBuilder attributesQueryForSingleGroup = new BoolQueryBuilder();
-		((SEclAttributeSet)attributeSet).addCriteria(new SubRefinementBuilder(refinementBuilder, attributesQueryForSingleGroup));
+		((SEclAttributeSet)attributeSet).addCriteria(new SubRefinementBuilder(refinementBuilder, attributesQueryForSingleGroup), inactiveConceptIds);
 	}
 
 	@Override

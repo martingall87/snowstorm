@@ -72,11 +72,11 @@ public class SSubExpressionConstraint extends SubExpressionConstraint implements
 	}
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
 		BoolQueryBuilder query = refinementBuilder.getQuery();
 		if (conceptId != null) {
 			if (operator != null) {
-				applyConceptCriteriaWithOperator(Collections.singleton(parseLong(conceptId)), operator, refinementBuilder);
+				applyConceptCriteriaWithOperator(Collections.singleton(parseLong(conceptId)), operator, refinementBuilder, inactiveConceptIds);
 			} else {
 				query.must(QueryBuilders.termQuery(QueryConcept.Fields.CONCEPT_ID, conceptId));
 			}
@@ -95,7 +95,7 @@ public class SSubExpressionConstraint extends SubExpressionConstraint implements
 			query.filter(filterQuery);
 			if (operator != null) {
 				SubRefinementBuilder filterRefinementBuilder = new SubRefinementBuilder(refinementBuilder, filterQuery);
-				applyConceptCriteriaWithOperator(conceptIds, operator, filterRefinementBuilder);
+				applyConceptCriteriaWithOperator(conceptIds, operator, filterRefinementBuilder, inactiveConceptIds);
 			} else {
 				filterQuery.must(termsQuery(QueryConcept.Fields.CONCEPT_ID, conceptIds));
 			}
@@ -113,8 +113,8 @@ public class SSubExpressionConstraint extends SubExpressionConstraint implements
 		}
 		// Else Wildcard! which has no constraints
 	}
-
-	private void applyConceptCriteriaWithOperator(Collection<Long> conceptIds, Operator operator, RefinementBuilder refinementBuilder) {
+	
+	private void applyConceptCriteriaWithOperator(Collection<Long> conceptIds, Operator operator, RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
 		BoolQueryBuilder query = refinementBuilder.getQuery();
 		QueryService queryService = refinementBuilder.getQueryService();
 		BranchCriteria branchCriteria = refinementBuilder.getBranchCriteria();
@@ -158,7 +158,7 @@ public class SSubExpressionConstraint extends SubExpressionConstraint implements
 				break;
 			case memberOf:
 				// ^
-				query.filter(termsQuery(QueryConcept.Fields.CONCEPT_ID, queryService.findConceptIdsInReferenceSet(branchCriteria, conceptId)));
+				query.filter(termsQuery(QueryConcept.Fields.CONCEPT_ID, queryService.findConceptIdsInReferenceSet(branchCriteria, conceptId, inactiveConceptIds)));
 				break;
 		}
 	}

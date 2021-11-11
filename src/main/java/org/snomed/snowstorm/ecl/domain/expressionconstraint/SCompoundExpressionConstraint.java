@@ -56,10 +56,10 @@ public class SCompoundExpressionConstraint extends CompoundExpressionConstraint 
 				.collect(toSet());
 	}
 
-	public void addCriteria(RefinementBuilder refinementBuilder) {
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
 		if (conjunctionExpressionConstraints != null) {
 			for (SubExpressionConstraint conjunctionExpressionConstraint : conjunctionExpressionConstraints) {
-				((SSubExpressionConstraint)conjunctionExpressionConstraint).addCriteria(refinementBuilder);
+				((SSubExpressionConstraint)conjunctionExpressionConstraint).addCriteria(refinementBuilder, inactiveConceptIds);
 			}
 		}
 		if (disjunctionExpressionConstraints != null) {
@@ -68,13 +68,13 @@ public class SCompoundExpressionConstraint extends CompoundExpressionConstraint 
 			for (SubExpressionConstraint disjunctionExpressionConstraint : disjunctionExpressionConstraints) {
 				BoolQueryBuilder shouldQuery = boolQuery();
 				shouldQueries.should(shouldQuery);
-				((SSubExpressionConstraint)disjunctionExpressionConstraint).addCriteria(new SubRefinementBuilder(refinementBuilder, shouldQuery));
+				((SSubExpressionConstraint)disjunctionExpressionConstraint).addCriteria(new SubRefinementBuilder(refinementBuilder, shouldQuery), inactiveConceptIds);
 			}
 		}
 		if (exclusionExpressionConstraint != null) {
 			BoolQueryBuilder mustNotQuery = boolQuery();
 			refinementBuilder.getQuery().mustNot(mustNotQuery);
-			((SSubExpressionConstraint)exclusionExpressionConstraint).addCriteria(new SubRefinementBuilder(refinementBuilder, mustNotQuery));
+			((SSubExpressionConstraint)exclusionExpressionConstraint).addCriteria(new SubRefinementBuilder(refinementBuilder, mustNotQuery), inactiveConceptIds);
 		}
 	}
 

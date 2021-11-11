@@ -28,7 +28,7 @@ public class SEclAttribute extends EclAttribute implements SRefinement {
 	private RefinementBuilder refinementBuilder;
 
 	@Override
-	public void addCriteria(RefinementBuilder refinementBuilder) {
+	public void addCriteria(RefinementBuilder refinementBuilder, Set<String> inactiveConceptIds) {
 		this.refinementBuilder = refinementBuilder;
 		// Input validation
 		if (cardinalityMin != null && cardinalityMax != null && cardinalityMin > cardinalityMax) {
