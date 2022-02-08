@@ -15,6 +15,9 @@ public class ImportCreationRequest {
 
 	@ApiModelProperty(value = "false")
 	private boolean internalRelease;
+	
+	@ApiModelProperty(value = "false")
+	private boolean disableTraceLog;
 
 	public RF2Type getType() {
 		return type;
@@ -46,5 +49,13 @@ public class ImportCreationRequest {
 
 	public void setInternalRelease(boolean internalRelease) {
 		this.internalRelease = internalRelease;
+	}
+
+	public boolean isDisableTraceLog() {
+		return disableTraceLog;
+	}
+
+	public void setDisableTraceLog(boolean disableTraceLog) {
+		this.disableTraceLog = disableTraceLog;
 	}
 }

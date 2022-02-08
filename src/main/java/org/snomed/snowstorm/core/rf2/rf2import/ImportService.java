@@ -100,6 +100,7 @@ public class ImportService {
 		String branchPath = job.getBranchPath();
 		Integer patchReleaseVersion = job.getPatchReleaseVersion();
 		setImportMetadata(importType, branchPath, job.isCreateCodeSystemVersion());
+		boolean disableLogTrace = job.isDisableTraceLog();
 		try {
 			Date start = new Date();
 			logger.info("Starting RF2 {}{} import on branch {}. ID {}", importType, patchReleaseVersion != null ? " RELEASE PATCH on effectiveTime " + patchReleaseVersion : "", branchPath, importId);
@@ -108,7 +109,8 @@ public class ImportService {
 			LoadingProfile loadingProfile = DEFAULT_LOADING_PROFILE
 					.withModuleIds(job.getModuleIds().toArray(new String[]{}));
 
-			final Integer maxEffectiveTime = importFiles(releaseFileStream, job, importType, branchPath, patchReleaseVersion, new ReleaseImporter(), loadingProfile);
+			final Integer maxEffectiveTime = importFiles(releaseFileStream, job, importType, branchPath, 
+					patchReleaseVersion, new ReleaseImporter(), loadingProfile, disableLogTrace);
 
 			if (job.isCreateCodeSystemVersion() && importType != FULL && maxEffectiveTime != null) {
 				// Create Code System version if a code system exists on this path
@@ -141,6 +143,8 @@ public class ImportService {
 	 * @param patchReleaseVersion The version of the patch release.
 	 * @param releaseImporter     Used to import the files.
 	 * @param loadingProfile      Used when finding the release files to import.
+	 * @param disableLogTrace 
+	 * @param disableLogTrace 
 	 * @return The max effective time which specifies the date that a specific version of a component was
 	 * released. A component may be versioned over time, but only one version of each component can be valid
 	 * at a specific point in time.
@@ -150,14 +154,14 @@ public class ImportService {
 	 * @see RF2Type#FULL
 	 */
 	private Integer importFiles(final InputStream releaseFileStream, final ImportJob job, final RF2Type importType, final String branchPath, final Integer patchReleaseVersion,
-			final ReleaseImporter releaseImporter, final LoadingProfile loadingProfile) throws ReleaseImportException {
+			final ReleaseImporter releaseImporter, final LoadingProfile loadingProfile, boolean disableTraceLog) throws ReleaseImportException {
 		switch (importType) {
 			case DELTA:
-				return deltaImport(releaseFileStream, job, branchPath, patchReleaseVersion, releaseImporter, loadingProfile);
+				return deltaImport(releaseFileStream, job, branchPath, patchReleaseVersion, releaseImporter, loadingProfile, disableTraceLog);
 			case SNAPSHOT:
-				return snapshotImport(releaseFileStream, job, branchPath, patchReleaseVersion, releaseImporter, loadingProfile);
+				return snapshotImport(releaseFileStream, job, branchPath, patchReleaseVersion, releaseImporter, loadingProfile, disableTraceLog);
 			case FULL:
-				return fullImport(releaseFileStream, branchPath, releaseImporter, loadingProfile);
+				return fullImport(releaseFileStream, branchPath, releaseImporter, loadingProfile, disableTraceLog);
 			default:
 				throw new IllegalStateException("Unexpected import type: " + importType);
 		}
@@ -191,9 +195,10 @@ public class ImportService {
 	}
 
 	private Integer fullImport(final InputStream releaseFileStream, final String branchPath, final ReleaseImporter releaseImporter,
-			final LoadingProfile loadingProfile) throws ReleaseImportException {
+			final LoadingProfile loadingProfile, boolean disableTraceLog) throws ReleaseImportException {
 
 		final FullImportComponentFactoryImpl importComponentFactory = getFullImportComponentFactory(branchPath);
+		importComponentFactory.setDisableTraceLog(disableTraceLog);
 		try {
 			releaseImporter.loadFullReleaseFiles(releaseFileStream, loadingProfile, importComponentFactory);
 			return null;
@@ -204,11 +209,12 @@ public class ImportService {
 	}
 
 	private Integer snapshotImport(final InputStream releaseFileStream, ImportJob job, final String branchPath, final Integer patchReleaseVersion,
-			final ReleaseImporter releaseImporter, final LoadingProfile loadingProfile) throws ReleaseImportException {
+			final ReleaseImporter releaseImporter, final LoadingProfile loadingProfile, boolean disableTraceLog) throws ReleaseImportException {
 
 		// If we are not creating a new version copy the release fields from the existing components
 		final ImportComponentFactoryImpl importComponentFactory =
 				getImportComponentFactory(branchPath, patchReleaseVersion, !job.isCreateCodeSystemVersion(), job.isClearEffectiveTimes());
+		importComponentFactory.setDisableTraceLog(disableTraceLog);
 		try {
 			releaseImporter.loadSnapshotReleaseFiles(releaseFileStream, loadingProfile, importComponentFactory);
 			return importComponentFactory.getMaxEffectiveTime();
@@ -219,11 +225,12 @@ public class ImportService {
 	}
 
 	private Integer deltaImport(final InputStream releaseFileStream, final ImportJob job, final String branchPath, final Integer patchReleaseVersion,
-			final ReleaseImporter releaseImporter, final LoadingProfile loadingProfile) throws ReleaseImportException {
+			final ReleaseImporter releaseImporter, final LoadingProfile loadingProfile, boolean disableTraceLog) throws ReleaseImportException {
 
 		// If we are not creating a new version copy the release fields from the existing components
 		final ImportComponentFactoryImpl importComponentFactory =
 				getImportComponentFactory(branchPath, patchReleaseVersion, !job.isCreateCodeSystemVersion(), job.isClearEffectiveTimes());
+		importComponentFactory.setDisableTraceLog(disableTraceLog);
 		try {
 			releaseImporter.loadDeltaReleaseFiles(releaseFileStream, loadingProfile, importComponentFactory);
 			return importComponentFactory.getMaxEffectiveTime();

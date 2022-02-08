@@ -14,6 +14,7 @@ public final class RF2ImportConfiguration {
 	private boolean internalRelease;
 	private Set<String> moduleIds;
 	private Integer patchReleaseVersion;
+	private boolean disableTraceLog = false;
 
 	// Used to remove the effectiveTime from imported RF2 rows - for daily build.
 	private Boolean clearEffectiveTimes;
@@ -84,5 +85,13 @@ public final class RF2ImportConfiguration {
 	public RF2ImportConfiguration setPatchReleaseVersion(Integer patchReleaseVersion) {
 		this.patchReleaseVersion = patchReleaseVersion;
 		return this;
+	}
+
+	public boolean isDisableTraceLog() {
+		return disableTraceLog;
+	}
+
+	public void setDisableTraceLog(boolean disableTraceLog) {
+		this.disableTraceLog = disableTraceLog;
 	}
 }

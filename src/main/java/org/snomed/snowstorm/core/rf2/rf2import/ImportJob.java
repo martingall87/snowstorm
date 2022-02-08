@@ -66,4 +66,8 @@ public class ImportJob {
 	public String getErrorMessage() {
 		return errorMessage;
 	}
+	
+	public boolean isDisableTraceLog() {
+		return importConfiguration.isDisableTraceLog();
+	}
 }

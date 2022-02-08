@@ -38,6 +38,7 @@ public class ImportComponentFactoryImpl extends ImpotentComponentFactory {
 	private final String path;
 	private Commit commit;
 	private BranchCriteria branchCriteriaBeforeOpenCommit;
+	private boolean disableTraceLog = false;
 
 	private final PersistBuffer<Concept> conceptPersistBuffer;
 	private final PersistBuffer<Description> descriptionPersistBuffer;
@@ -199,6 +200,7 @@ public class ImportComponentFactoryImpl extends ImpotentComponentFactory {
 	protected void setCommit(Commit commit) {
 		this.commit = commit;
 		branchCriteriaBeforeOpenCommit = versionControlHelper.getBranchCriteriaBeforeOpenCommit(commit);
+		this.commit.setDisableTraceLog(disableTraceLog);
 	}
 
 	@Override
@@ -335,6 +337,14 @@ public class ImportComponentFactoryImpl extends ImpotentComponentFactory {
 
 		abstract void persistCollection(Collection<E> entities);
 
+	}
+
+	public boolean isDisableTraceLog() {
+		return disableTraceLog;
+	}
+
+	public void setDisableTraceLog(boolean disableTraceLog) {
+		this.disableTraceLog = disableTraceLog;
 	}
 
 }

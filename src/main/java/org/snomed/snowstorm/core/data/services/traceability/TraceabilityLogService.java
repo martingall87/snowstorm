@@ -79,7 +79,7 @@ public class TraceabilityLogService implements CommitListener {
 	@Override
 	public void preCommitCompletion(final Commit commit) throws IllegalStateException {
 
-		if (BranchMetadataHelper.isImportingCodeSystemVersion(commit)) {
+		if (BranchMetadataHelper.isImportingCodeSystemVersion(commit) || commit.isDisableTraceLog()) {
 			return;
 		}
 

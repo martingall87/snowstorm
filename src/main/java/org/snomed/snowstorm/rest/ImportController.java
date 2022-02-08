@@ -52,6 +52,7 @@ public class ImportController {
 		RF2ImportConfiguration importConfiguration = new RF2ImportConfiguration(importRequest.getType(), importRequest.getBranchPath());
 		importConfiguration.setCreateCodeSystemVersion(importRequest.getCreateCodeSystemVersion());
 		importConfiguration.setInternalRelease(importRequest.isInternalRelease());
+		importConfiguration.setDisableTraceLog(importRequest.isDisableTraceLog());
 		String id = importService.createJob(importConfiguration);
 		return ControllerHelper.getCreatedResponse(id);
 	}
@@ -78,6 +79,7 @@ public class ImportController {
 		RF2ImportConfiguration importConfiguration = new RF2ImportConfiguration(importRequest.getType(), importRequest.getBranchPath());
 		importConfiguration.setCreateCodeSystemVersion(importRequest.getCreateCodeSystemVersion());
 		importConfiguration.setInternalRelease(importRequest.isInternalRelease());
+		importConfiguration.setDisableTraceLog(importRequest.isDisableTraceLog());
 
 		String id = importService.createJob(importConfiguration);
 
