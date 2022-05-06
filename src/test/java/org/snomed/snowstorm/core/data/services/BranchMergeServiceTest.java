@@ -11,30 +11,44 @@ import io.kaicode.elasticvc.domain.Metadata;
 import org.assertj.core.util.Maps;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.search.sort.SortBuilders;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
 import org.snomed.snowstorm.AbstractTest;
+import org.snomed.snowstorm.TestConfig;
 import org.snomed.snowstorm.config.Config;
 import org.snomed.snowstorm.core.data.domain.*;
 import org.snomed.snowstorm.core.data.domain.review.BranchReview;
 import org.snomed.snowstorm.core.data.domain.review.MergeReview;
 import org.snomed.snowstorm.core.data.domain.review.MergeReviewConceptVersions;
 import org.snomed.snowstorm.core.data.domain.review.ReviewStatus;
+import org.snomed.snowstorm.core.data.repositories.BranchReviewRepository;
 import org.snomed.snowstorm.core.data.services.pojo.MemberSearchRequest;
 import org.snomed.snowstorm.core.data.services.traceability.Activity;
 import org.snomed.snowstorm.core.data.services.traceability.TraceabilityConsumer;
 import org.snomed.snowstorm.core.data.services.traceability.TraceabilityLogService;
 import org.snomed.snowstorm.rest.pojo.MergeRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.web.server.LocalServerPort;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
 import org.springframework.data.elasticsearch.core.SearchHit;
+import org.springframework.data.elasticsearch.core.SearchHitsIterator;
 import org.springframework.data.elasticsearch.core.query.NativeSearchQueryBuilder;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.testcontainers.shaded.com.fasterxml.jackson.core.JsonProcessingException;
+import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -44,8 +58,8 @@ import java.util.stream.IntStream;
 
 import static io.kaicode.elasticvc.api.ComponentService.LARGE_PAGE;
 import static java.util.function.Predicate.not;
-import static org.elasticsearch.index.query.QueryBuilders.boolQuery;
-import static org.elasticsearch.index.query.QueryBuilders.termsQuery;
+import static org.elasticsearch.index.query.QueryBuilders.*;
+import static org.elasticsearch.index.query.QueryBuilders.matchQuery;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.snomed.snowstorm.config.Config.DEFAULT_LANGUAGE_DIALECTS;
@@ -55,6 +69,7 @@ import static org.snomed.snowstorm.core.data.domain.review.ReviewStatus.PENDING;
 import static org.snomed.snowstorm.core.data.services.CodeSystemService.SNOMEDCT;
 
 @ExtendWith(SpringExtension.class)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, classes = TestConfig.class)
 class BranchMergeServiceTest extends AbstractTest {
 
 	@Autowired
@@ -96,12 +111,21 @@ class BranchMergeServiceTest extends AbstractTest {
 	@Autowired
 	private CodeSystemUpgradeService codeSystemUpgradeService;
 
+	@Autowired
+	private BranchReviewRepository branchReviewRepository;
+
 	private List<Activity> activities;
 
 	private Map<String, Branch> childBranches;
 
 	@Autowired
 	private CodeSystemService codeSystemService;
+
+	@LocalServerPort
+	private int port;
+
+	@Autowired
+	private TestRestTemplate testRestTemplate;
 	
 	@BeforeEach
 	void setup() throws ServiceException, InterruptedException {
@@ -3574,6 +3598,636 @@ class BranchMergeServiceTest extends AbstractTest {
 		}
 	}
 
+	@Test
+	void testRebasingSynonymAdditions() {
+		HttpHeaders httpHeaders = new HttpHeaders();
+		httpHeaders.setContentType(MediaType.APPLICATION_JSON);
+		String requestUrl;
+		HttpEntity<String> httpEntity;
+		ResponseEntity<?> responseEntity;
+		ResponseEntity<ConceptView> responseEntityConceptView;
+
+		// 1. Create project
+		requestUrl = "http://localhost:" + port + "/branches";
+		String project = buildNewBranchJson("MAIN", "projectA");
+		httpEntity = new HttpEntity<>(project, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 2. Create task A
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskA = buildNewBranchJson("MAIN/projectA", "taskA");
+		httpEntity = new HttpEntity<>(taskA, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 3. Create Concept on task A
+		String conceptJson = buildConceptJson();
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskA/concepts";
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		String conceptId = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ConceptView.class).getBody().getConceptId();
+		assertNotNull(conceptId);
+
+		// 4. Promote task A to project
+		String mergeReview = buildMergeRequestJson("MAIN/projectA/taskA", "MAIN/projectA");
+		requestUrl = "http://localhost:" + port + "/merges";
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		String jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		// 5. Wait for promotion to complete
+		boolean inProgress = true;
+		while (inProgress) {
+			BranchMergeJob branchMergeJob = this.testRestTemplate.getForObject(jobLocation, BranchMergeJob.class);
+			if (branchMergeJob.getStatus() != JobStatus.IN_PROGRESS) {
+				inProgress = false;
+			}
+		}
+
+		// 6. Create task B
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskB = buildNewBranchJson("MAIN/projectA", "taskB");
+		httpEntity = new HttpEntity<>(taskB, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 7. Create task C
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskC = buildNewBranchJson("MAIN/projectA", "taskC");
+		httpEntity = new HttpEntity<>(taskC, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 8. Add Description to Concept on task B
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskB/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		ConceptView concept = responseEntityConceptView.getBody();
+		concept.getDescriptions().add(new Description("Cry wolf disease"));
+		conceptJson = toJson(concept);
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskB/concepts/" + conceptId;
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		this.testRestTemplate.put(requestUrl, httpEntity, void.class);
+
+		// 9. Add Description to Concept on task C
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskC/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		concept = responseEntityConceptView.getBody();
+		concept.getDescriptions().add(new Description("Not a real disease"));
+		conceptJson = toJson(concept);
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskC/concepts/" + conceptId;
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		this.testRestTemplate.put(requestUrl, httpEntity, void.class);
+
+		// 10. Promote task B
+		mergeReview = buildMergeRequestJson("MAIN/projectA/taskB", "MAIN/projectA");
+		requestUrl = "http://localhost:" + port + "/merges";
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		inProgress = true;
+		while (inProgress) {
+			BranchMergeJob branchMergeJob = this.testRestTemplate.getForObject(jobLocation, BranchMergeJob.class);
+			if (branchMergeJob.getStatus() != JobStatus.IN_PROGRESS) {
+				inProgress = false;
+			}
+		}
+
+		// 11. Prepare task C for promotion by rebasing
+		requestUrl = "http://localhost:" + port + "/merge-reviews";
+		mergeReview = buildMergeRequestJson("MAIN/projectA", "MAIN/projectA/taskC");
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		inProgress = true;
+		while (inProgress) {
+			MergeReview forObject = this.testRestTemplate.getForObject(jobLocation, MergeReview.class);
+			if (forObject.getStatus() == CURRENT) {
+				inProgress = false;
+			}
+		}
+
+		// 12. Assert there are no conflicts
+		List<?> conflicts = this.testRestTemplate.getForObject(jobLocation + "/details", List.class);
+		assertTrue(conflicts.isEmpty());
+
+		// 13. Assert Concept's Descriptions before rebase
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskC/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		concept = responseEntityConceptView.getBody();
+		assertEquals(3, concept.getDescriptions().size());
+
+		// 14. Finalise rebase
+		requestUrl = jobLocation + "/apply";
+		httpEntity = new HttpEntity<>(null, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+
+		// 15. Assert Concept's Descriptions after rebase
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskC/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		concept = responseEntityConceptView.getBody();
+		assertEquals(4, concept.getDescriptions().size()); // Silently merged synonym
+	}
+
+	@Test
+	void testRebaseDescriptionOntoDeletedConcept() {
+		HttpHeaders httpHeaders = new HttpHeaders();
+		httpHeaders.setContentType(MediaType.APPLICATION_JSON);
+		String requestUrl;
+		HttpEntity<String> httpEntity;
+		ResponseEntity<?> responseEntity;
+		ResponseEntity<ConceptView> responseEntityConceptView;
+
+		// 1. Create project
+		requestUrl = "http://localhost:" + port + "/branches";
+		String project = buildNewBranchJson("MAIN", "projectA");
+		httpEntity = new HttpEntity<>(project, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 2. Create task A
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskA = buildNewBranchJson("MAIN/projectA", "taskA");
+		httpEntity = new HttpEntity<>(taskA, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 3. Create Concept on task A
+		String conceptJson = buildConceptJson();
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskA/concepts";
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		String conceptId = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ConceptView.class).getBody().getConceptId();
+		assertNotNull(conceptId);
+
+		// 4. Promote task A to project
+		String mergeReview = buildMergeRequestJson("MAIN/projectA/taskA", "MAIN/projectA");
+		requestUrl = "http://localhost:" + port + "/merges";
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		String jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		// 5. Wait for promotion to complete
+		boolean inProgress = true;
+		while (inProgress) {
+			BranchMergeJob branchMergeJob = this.testRestTemplate.getForObject(jobLocation, BranchMergeJob.class);
+			if (branchMergeJob.getStatus() != JobStatus.IN_PROGRESS) {
+				inProgress = false;
+			}
+		}
+
+		// 6. Assert Concept exists on project
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 200);
+		assertEquals(responseEntityConceptView.getBody().getConceptId(), conceptId);
+
+		// 7. Create task B (for deleting Concept)
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskB = buildNewBranchJson("MAIN/projectA", "taskB");
+		httpEntity = new HttpEntity<>(taskB, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 8. Create task C (for adding Description)
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskC = buildNewBranchJson("MAIN/projectA", "taskC");
+		httpEntity = new HttpEntity<>(taskC, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 9. Assert Concept exists on task B before deletion
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskB/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 200);
+		assertEquals(responseEntityConceptView.getBody().getConceptId(), conceptId);
+
+		// 10. Delete Concept on task B
+		requestUrl = "http://localhost:" + port + "/MAIN/projectA/taskB/concepts/" + conceptId;
+		this.testRestTemplate.delete(requestUrl);
+
+		// 11. Assert Concept deleted on task B
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskB/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 404);
+		assertNull(responseEntityConceptView.getBody().getConceptId());
+
+		// 12. Add Description to Concept on task C
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskC/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		ConceptView concept = responseEntityConceptView.getBody();
+		concept.getDescriptions().add(new Description("Not a real disease"));
+		conceptJson = toJson(concept);
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskC/concepts/" + conceptId;
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		this.testRestTemplate.put(requestUrl, httpEntity, void.class);
+
+		// 13. Assert Concept has 3 Descriptions on task C
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 200);
+		ConceptView body = responseEntityConceptView.getBody();
+		assertEquals(body.getDescriptions().size(), 3);
+
+		// 14. Assert Concept exists on project before promotion
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(200, responseEntityConceptView.getStatusCodeValue());
+		assertEquals(responseEntityConceptView.getBody().getConceptId(), conceptId);
+
+		// 15. Promote task B (Concept has been deleted)
+		mergeReview = buildMergeRequestJson("MAIN/projectA/taskB", "MAIN/projectA");
+		requestUrl = "http://localhost:" + port + "/merges";
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		inProgress = true;
+		while (inProgress) {
+			BranchMergeJob branchMergeJob = this.testRestTemplate.getForObject(jobLocation, BranchMergeJob.class);
+			if (branchMergeJob.getStatus() != JobStatus.IN_PROGRESS) {
+				inProgress = false;
+			}
+		}
+
+		// 16. Assert Concept doesn't exist on project after promotion
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 404);
+		assertNull(responseEntityConceptView.getBody().getConceptId());
+
+		// 17. Prepare task C for promotion by rebasing
+		requestUrl = "http://localhost:" + port + "/merge-reviews";
+		mergeReview = buildMergeRequestJson("MAIN/projectA", "MAIN/projectA/taskC");
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		inProgress = true;
+		while (inProgress) {
+			MergeReview forObject = this.testRestTemplate.getForObject(jobLocation, MergeReview.class);
+			if (forObject.getStatus() == CURRENT) {
+				inProgress = false;
+			}
+		}
+
+		// 18. Assert there are conflicts
+		List<?> conflicts = this.testRestTemplate.getForObject(jobLocation + "/details", List.class);
+		assertFalse(conflicts.isEmpty());
+	}
+
+	@Test
+	void testRebaseDeletedConceptOntoDescription() {
+		HttpHeaders httpHeaders = new HttpHeaders();
+		httpHeaders.setContentType(MediaType.APPLICATION_JSON);
+		String requestUrl;
+		HttpEntity<String> httpEntity;
+		ResponseEntity<?> responseEntity;
+		ResponseEntity<ConceptView> responseEntityConceptView;
+
+		// 1. Create project
+		requestUrl = "http://localhost:" + port + "/branches";
+		String project = buildNewBranchJson("MAIN", "projectA");
+		httpEntity = new HttpEntity<>(project, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 2. Create task A
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskA = buildNewBranchJson("MAIN/projectA", "taskA");
+		httpEntity = new HttpEntity<>(taskA, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 3. Create Concept on task A
+		String conceptJson = buildConceptJson();
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskA/concepts";
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		String conceptId = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ConceptView.class).getBody().getConceptId();
+		assertNotNull(conceptId);
+
+		// 4. Promote task A to project
+		String mergeReview = buildMergeRequestJson("MAIN/projectA/taskA", "MAIN/projectA");
+		requestUrl = "http://localhost:" + port + "/merges";
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		String jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		// 5. Wait for promotion to complete
+		boolean inProgress = true;
+		while (inProgress) {
+			BranchMergeJob branchMergeJob = this.testRestTemplate.getForObject(jobLocation, BranchMergeJob.class);
+			if (branchMergeJob.getStatus() != JobStatus.IN_PROGRESS) {
+				inProgress = false;
+			}
+		}
+
+		// 6. Assert Concept exists on project
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 200);
+		assertEquals(responseEntityConceptView.getBody().getConceptId(), conceptId);
+
+		// 7. Create task B (for deleting Concept)
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskB = buildNewBranchJson("MAIN/projectA", "taskB");
+		httpEntity = new HttpEntity<>(taskB, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 8. Create task C (for adding Description)
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskC = buildNewBranchJson("MAIN/projectA", "taskC");
+		httpEntity = new HttpEntity<>(taskC, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 9. Assert Concept exists on task B before deletion
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskB/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 200);
+		assertEquals(responseEntityConceptView.getBody().getConceptId(), conceptId);
+
+		// 10. Delete Concept on task B
+		requestUrl = "http://localhost:" + port + "/MAIN/projectA/taskB/concepts/" + conceptId;
+		this.testRestTemplate.delete(requestUrl);
+
+		// 11. Assert Concept deleted on task B
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskB/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 404);
+		assertNull(responseEntityConceptView.getBody().getConceptId());
+
+		// 12. Add Description to Concept on task C
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskC/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		ConceptView concept = responseEntityConceptView.getBody();
+		concept.getDescriptions().add(new Description("Not a real disease"));
+		conceptJson = toJson(concept);
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskC/concepts/" + conceptId;
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		this.testRestTemplate.put(requestUrl, httpEntity, void.class);
+
+		// 13. Assert Concept has 3 Descriptions on task C
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 200);
+		ConceptView body = responseEntityConceptView.getBody();
+		assertEquals(body.getDescriptions().size(), 3);
+
+		// 14. Assert Concept exists on project before promotion
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(200, responseEntityConceptView.getStatusCodeValue());
+		assertEquals(responseEntityConceptView.getBody().getConceptId(), conceptId);
+
+		// 15. Promote task C (New Description added)
+		mergeReview = buildMergeRequestJson("MAIN/projectA/taskC", "MAIN/projectA");
+		requestUrl = "http://localhost:" + port + "/merges";
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		inProgress = true;
+		while (inProgress) {
+			BranchMergeJob branchMergeJob = this.testRestTemplate.getForObject(jobLocation, BranchMergeJob.class);
+			if (branchMergeJob.getStatus() != JobStatus.IN_PROGRESS) {
+				inProgress = false;
+			}
+		}
+
+		// 16. Assert Concept has 3 Descriptions on project after promotion
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		assertEquals(responseEntityConceptView.getStatusCodeValue(), 200);
+		body = responseEntityConceptView.getBody();
+		assertEquals(body.getDescriptions().size(), 3);
+
+		// 17. Prepare task B for promotion by rebasing
+		requestUrl = "http://localhost:" + port + "/merge-reviews";
+		mergeReview = buildMergeRequestJson("MAIN/projectA", "MAIN/projectA/taskB");
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		inProgress = true;
+		while (inProgress) {
+			MergeReview forObject = this.testRestTemplate.getForObject(jobLocation, MergeReview.class);
+			if (forObject.getStatus() == CURRENT) {
+				inProgress = false;
+			}
+		}
+
+		// 18. Assert there are conflicts
+		List<?> conflicts = this.testRestTemplate.getForObject(jobLocation + "/details", List.class);
+		assertFalse(conflicts.isEmpty());
+	}
+
+	@Test
+	void testAddingDescriptionToConceptPromotedAllTheWayToCodeSystem() {
+		HttpHeaders httpHeaders = new HttpHeaders();
+		httpHeaders.setContentType(MediaType.APPLICATION_JSON);
+		String requestUrl;
+		HttpEntity<String> httpEntity;
+		ResponseEntity<?> responseEntity;
+		ResponseEntity<ConceptView> responseEntityConceptView;
+
+		// 1. Create project
+		requestUrl = "http://localhost:" + port + "/branches";
+		String project = buildNewBranchJson("MAIN", "projectA");
+		httpEntity = new HttpEntity<>(project, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 2. Create task A
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskA = buildNewBranchJson("MAIN/projectA", "taskA");
+		httpEntity = new HttpEntity<>(taskA, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 3. Create Concept on task A
+		String conceptJson = buildConceptJson();
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskA/concepts";
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		String conceptId = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ConceptView.class).getBody().getConceptId();
+		assertNotNull(conceptId);
+
+		// 4. Promote task A to project
+		String mergeReview = buildMergeRequestJson("MAIN/projectA/taskA", "MAIN/projectA");
+		requestUrl = "http://localhost:" + port + "/merges";
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		String jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		// 5. Wait for promotion to complete
+		boolean inProgress = true;
+		while (inProgress) {
+			BranchMergeJob branchMergeJob = this.testRestTemplate.getForObject(jobLocation, BranchMergeJob.class);
+			if (branchMergeJob.getStatus() != JobStatus.IN_PROGRESS) {
+				inProgress = false;
+			}
+		}
+
+		// 6. Create task B
+		requestUrl = "http://localhost:" + port + "/branches";
+		String taskB = buildNewBranchJson("MAIN/projectA", "taskB");
+		httpEntity = new HttpEntity<>(taskB, httpHeaders);
+		this.testRestTemplate.postForEntity(requestUrl, httpEntity, void.class);
+
+		// 7. Add Description to Concept on task B
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskB/concepts/" + conceptId;
+		responseEntityConceptView = this.testRestTemplate.getForEntity(requestUrl, ConceptView.class);
+		ConceptView concept = responseEntityConceptView.getBody();
+		concept.getDescriptions().add(new Description("Not a real disease"));
+		conceptJson = toJson(concept);
+		requestUrl = "http://localhost:" + port + "/browser/MAIN/projectA/taskB/concepts/" + conceptId;
+		httpEntity = new HttpEntity<>(conceptJson, httpHeaders);
+		this.testRestTemplate.put(requestUrl, httpEntity, void.class);
+
+		// 8. Promote Project to CodeSystem
+		mergeReview = buildMergeRequestJson("MAIN/projectA", "MAIN");
+		requestUrl = "http://localhost:" + port + "/merges";
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		// 9. Wait for promotion to complete
+		inProgress = true;
+		while (inProgress) {
+			BranchMergeJob branchMergeJob = this.testRestTemplate.getForObject(jobLocation, BranchMergeJob.class);
+			if (branchMergeJob.getStatus() != JobStatus.IN_PROGRESS) {
+				inProgress = false;
+			}
+		}
+
+		// 10. Assert document representing Concept on Project has been ended
+		Concept docOnProject = getConceptDocument("MAIN/projectA", conceptId);
+		Concept docOnCodeSystem = getConceptDocument("MAIN", conceptId);
+		assertEquals(docOnProject.getEnd(), docOnCodeSystem.getStart()); // Document has therefore been promoted
+
+		// 11. Prepare task B for promotion by rebasing
+		requestUrl = "http://localhost:" + port + "/merge-reviews";
+		mergeReview = buildMergeRequestJson("MAIN/projectA", "MAIN/projectA/taskB");
+		httpEntity = new HttpEntity<>(mergeReview, httpHeaders);
+		responseEntity = this.testRestTemplate.postForEntity(requestUrl, httpEntity, ResponseEntity.class);
+		jobLocation = responseEntity.getHeaders().get("location").get(0);
+
+		inProgress = true;
+		while (inProgress) {
+			MergeReview forObject = this.testRestTemplate.getForObject(jobLocation, MergeReview.class);
+			if (forObject.getStatus() == CURRENT) {
+				inProgress = false;
+			}
+		}
+
+		// 12. Assert there are no conflicts
+		List<?> conflicts = this.testRestTemplate.getForObject(jobLocation + "/details", List.class);
+		assertTrue(conflicts.isEmpty());
+	}
+
+	private String toJson(Object object) {
+		try {
+			return new ObjectMapper().writeValueAsString(object);
+		} catch (JsonProcessingException e) {
+			return null;
+		}
+	}
+
+	private String buildMergeRequestJson(String source, String target) {
+		/*
+		 * MergeReview
+		 * */
+		JSONObject mergeRequest = new JSONObject();
+		put(mergeRequest, "source", source);
+		put(mergeRequest, "target", target);
+
+		return mergeRequest.toString();
+	}
+
+	private String buildNewBranchJson(String parent, String name) {
+		/*
+		 * Branch
+		 * */
+		JSONObject branch = new JSONObject();
+		put(branch, "name", name);
+		put(branch, "parent", parent);
+
+		return branch.toString();
+	}
+
+	private String buildConceptJson(){
+		/*
+		 * Concept
+		 * */
+		JSONObject concept = new JSONObject();
+		put(concept, "definitionStatus", "PRIMITIVE");
+		put(concept, "active", true);
+		put(concept, "released", false);
+		put(concept, "moduleId", "900000000000207008");
+
+		/*
+		 * Descriptions
+		 * */
+		JSONObject acceptability = new JSONObject();
+		put(acceptability, "900000000000509007", "PREFERRED");
+		put(acceptability, "900000000000508004", "PREFERRED");
+
+		JSONObject descriptionFsn = new JSONObject();
+		put(descriptionFsn, "active", true);
+		put(descriptionFsn, "moduleId", "900000000000207008");
+		put(descriptionFsn, "type", "FSN");
+		put(descriptionFsn, "term", "Fake disease (disorder)");
+		put(descriptionFsn, "lang", "en");
+		put(descriptionFsn, "caseSignificance", "CASE_INSENSITIVE");
+		put(descriptionFsn, "acceptabilityMap", acceptability);
+
+		JSONObject descriptionSyn = new JSONObject();
+		put(descriptionSyn, "active", true);
+		put(descriptionSyn, "moduleId", "900000000000207008");
+		put(descriptionSyn, "type", "SYNONYM");
+		put(descriptionSyn, "term", "Fake disease");
+		put(descriptionSyn, "lang", "en");
+		put(descriptionSyn, "caseSignificance", "CASE_INSENSITIVE");
+		put(descriptionFsn, "acceptabilityMap", acceptability);
+
+		JSONArray descriptions = new JSONArray();
+		descriptions.put(descriptionFsn);
+		descriptions.put(descriptionSyn);
+		put(concept, "descriptions", descriptions);
+
+		/*
+		 * Relationships / Axioms
+		 * */
+		JSONObject relationshipTarget = new JSONObject();
+		put(relationshipTarget, "conceptId", "138875005");
+		put(relationshipTarget, "fsn", "SNOMED CT Concept");
+		put(relationshipTarget, "definitionStatus", "PRIMITIVE");
+		put(relationshipTarget, "effectiveTime", "20020131");
+		put(relationshipTarget, "moduleId", "900000000000207008");
+		put(relationshipTarget, "active", true);
+
+		JSONObject relationshipType = new JSONObject();
+		put(relationshipType, "conceptId", "116680003");
+		put(relationshipType, "pt", "Is a");
+
+		JSONObject relationship = new JSONObject();
+		put(relationship, "active", true);
+		put(relationship, "groupId", 0);
+		put(relationship, "target", relationshipTarget);
+		put(relationship, "type", relationshipType);
+		put(relationship, "moduleId", "900000000000207008");
+
+		JSONArray relationships = new JSONArray();
+		relationships.put(relationship);
+
+		JSONObject axiom = new JSONObject();
+		put(axiom, "axiomId", UUID.randomUUID().toString());
+		put(axiom, "definitionStatus", "PRIMITIVE");
+		put(axiom, "active", true);
+		put(axiom, "released", false);
+		put(axiom, "moduleId", "900000000000207008");
+		put(axiom, "relationships", relationships);
+
+		JSONArray classAxioms = new JSONArray();
+		classAxioms.put(axiom);
+		put(concept, "classAxioms", classAxioms);
+
+		return concept.toString();
+	}
+
+	private void put(JSONObject jsonObject, String key, Object value) {
+		try {
+			jsonObject.put(key, value);
+		} catch (Exception exception) {
+			// ignore
+		}
+	}
+
 	private void assertNotVersioned(Description description) {
 		assertNull(description.getEffectiveTime());
 		assertFalse(description.isReleased());
@@ -3660,6 +4314,18 @@ class BranchMergeServiceTest extends AbstractTest {
 			cumulativeWait++;
 		}
 		return review;
+	}
+
+	private Concept getConceptDocument(String path, String conceptId) {
+		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
+				.withQuery(
+						boolQuery()
+								.must(matchQuery(Concept.Fields.PATH, path))
+								.must(matchQuery(Concept.Fields.CONCEPT_ID, conceptId))
+				)
+				.build(), Concept.class)) {
+			return stream.next().getContent();
+		}
 	}
 
 	/**
