@@ -299,7 +299,7 @@ class BranchReviewServiceTest extends AbstractTest {
 		MergeReview review = createMergeReviewAndWaitUntilCurrent("MAIN", "MAIN/A");
 
 		Collection<MergeReviewConceptVersions> mergeReviewConflictingConcepts = reviewService.getMergeReviewConflictingConcepts(review.getId(), DEFAULT_LANGUAGE_DIALECTS);
-		assertEquals(0, mergeReviewConflictingConcepts.size());
+		assertEquals(1, mergeReviewConflictingConcepts.size());
 	}
 
 	@Test
