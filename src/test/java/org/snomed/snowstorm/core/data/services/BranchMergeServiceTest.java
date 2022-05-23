@@ -22,10 +22,7 @@ import org.snomed.snowstorm.AbstractTest;
 import org.snomed.snowstorm.TestConfig;
 import org.snomed.snowstorm.config.Config;
 import org.snomed.snowstorm.core.data.domain.*;
-import org.snomed.snowstorm.core.data.domain.review.BranchReview;
-import org.snomed.snowstorm.core.data.domain.review.MergeReview;
-import org.snomed.snowstorm.core.data.domain.review.MergeReviewConceptVersions;
-import org.snomed.snowstorm.core.data.domain.review.ReviewStatus;
+import org.snomed.snowstorm.core.data.domain.review.*;
 import org.snomed.snowstorm.core.data.repositories.BranchReviewRepository;
 import org.snomed.snowstorm.core.data.services.pojo.MemberSearchRequest;
 import org.snomed.snowstorm.core.data.services.traceability.Activity;
@@ -42,10 +39,7 @@ import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
 import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHitsIterator;
 import org.springframework.data.elasticsearch.core.query.NativeSearchQueryBuilder;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.testcontainers.shaded.com.fasterxml.jackson.core.JsonProcessingException;
 import org.testcontainers.shaded.com.fasterxml.jackson.databind.ObjectMapper;
@@ -3596,6 +3590,58 @@ class BranchMergeServiceTest extends AbstractTest {
 		} else {
 			assertNull(concept.getEffectiveTimeI());
 		}
+	}
+
+	@Test
+	void testRebasingAxiomChanges() throws ServiceException, InterruptedException {
+		// Create hierarchy
+		String foodHierarchy = conceptService.create(new Concept()
+				.addDescription(new Description("Food (food)").setTypeId(FSN))
+				.addDescription(new Description("Food").setTypeId(SYNONYM))
+				.addRelationship(new Relationship(ISA, SNOMEDCT_ROOT)), "MAIN").getConceptId();
+
+		String pizzaHierarchy = conceptService.create(new Concept()
+				.addDescription(new Description("Pizza (food)").setTypeId(FSN))
+				.addDescription(new Description("Pizza").setTypeId(SYNONYM))
+				.addRelationship(new Relationship(ISA, foodHierarchy)), "MAIN").getConceptId();
+
+		String pieHierarchy = conceptService.create(new Concept()
+				.addDescription(new Description("Pie (food)").setTypeId(FSN))
+				.addDescription(new Description("Pie").setTypeId(SYNONYM))
+				.addRelationship(new Relationship(ISA, foodHierarchy)), "MAIN").getConceptId();
+
+		// Create project
+		branchService.create("MAIN/projectA");
+
+		// Create pizza on project (incorrectly as top-level)
+		String pizzaId = conceptService.create(new Concept()
+				.addDescription(new Description("Cheese pizza (food)").setTypeId(FSN))
+				.addDescription(new Description("Cheese pizza").setTypeId(SYNONYM))
+				.addAxiom(new Relationship(ISA, SNOMEDCT_ROOT)), "MAIN/projectA").getConceptId();
+
+		// Create task A
+		branchService.create("MAIN/projectA/taskA");
+
+		// Create task B
+		branchService.create("MAIN/projectA/taskB");
+
+		// Fix modelling of pizza on task A by moving to pizza hierarchy
+		Concept pizza = conceptService.find(pizzaId, "MAIN/projectA/taskA");
+		pizza.getClassAxioms().iterator().next().getRelationships().forEach(r -> r.setDestinationId(pizzaHierarchy));
+		conceptService.update(pizza, "MAIN/projectA/taskA");
+
+		// Fix modelling of pizza on task B by moving to pie hierarchy
+		pizza = conceptService.find(pizzaId, "MAIN/projectA/taskB");
+		pizza.getClassAxioms().iterator().next().getRelationships().forEach(r -> r.setDestinationId(pieHierarchy));
+		conceptService.update(pizza, "MAIN/projectA/taskB");
+
+		// Promote task A to project
+		branchMergeService.mergeBranchSync("MAIN/projectA/taskA", "MAIN/projectA", Collections.emptySet());
+
+		// Rebase task B
+		MergeReview review = getMergeReviewInCurrentState("MAIN/projectA", "MAIN/projectA/taskB");
+		Collection<MergeReviewConceptVersions> conflicts = reviewService.getMergeReviewConflictingConcepts(review.getId(), new ArrayList<>());
+		assertTrue(conflicts.size() != 0);
 	}
 
 	@Test
