@@ -3574,6 +3574,115 @@ class BranchMergeServiceTest extends AbstractTest {
 		}
 	}
 
+	@Test
+	void testDuplicateLangRefMembers() throws ServiceException, InterruptedException {
+		Map<String, String> intPreferred = Map.of(US_EN_LANG_REFSET, descriptionAcceptabilityNames.get(PREFERRED), GB_EN_LANG_REFSET, descriptionAcceptabilityNames.get(PREFERRED));
+		Concept concept;
+		Collection<MergeReviewConceptVersions> conflicts;
+
+		// Create Project
+		branchService.create("MAIN/projectA");
+
+		// Create Task A
+		branchService.create("MAIN/projectA/taskA");
+
+		// Create top-level Concept on Task A
+		String foodHierarchy = conceptService.create(new Concept()
+						.addDescription(new Description("Food (food)").setTypeId(FSN).setCaseSignificance("CASE_INSENSITIVE").setAcceptabilityMap(intPreferred))
+						.addDescription(new Description("Food").setTypeId(SYNONYM).setCaseSignificance("CASE_INSENSITIVE").setAcceptabilityMap(intPreferred))
+						.addAxiom(new Relationship(ISA, SNOMEDCT_ROOT)) // Stated
+						.addRelationship(new Relationship(ISA, SNOMEDCT_ROOT)), "MAIN/projectA/taskA") // Inferred
+				.getConceptId();
+
+		// Promote Task A to Project
+		branchMergeService.mergeBranchSync("MAIN/projectA/taskA", "MAIN/projectA", Collections.emptySet());
+
+		// Create Task B
+		branchService.create("MAIN/projectA/taskB");
+
+		// Create top-level Concept on Task B
+		String vehicleHierarchy = conceptService.create(new Concept()
+						.addDescription(new Description("Vehicle (vehicle)").setTypeId(FSN).setCaseSignificance("CASE_INSENSITIVE").setAcceptabilityMap(intPreferred))
+						.addDescription(new Description("Vehicle").setTypeId(SYNONYM).setCaseSignificance("CASE_INSENSITIVE").setAcceptabilityMap(intPreferred))
+						.addAxiom(new Relationship(ISA, SNOMEDCT_ROOT)) // Stated
+						.addRelationship(new Relationship(ISA, SNOMEDCT_ROOT)), "MAIN/projectA/taskB") // Inferred
+				.getConceptId();
+
+		// Promote Project to CodeSystem
+		branchMergeService.mergeBranchSync("MAIN/projectA", "MAIN", Collections.emptySet());
+
+		// Version CodeSystem
+		CodeSystem codeSystem = codeSystemService.find("SNOMEDCT");
+		codeSystemService.createVersion(codeSystem, 20220131, "20220131");
+
+		// Rebase CodeSystem onto Project
+		MergeReview review = getMergeReviewInCurrentState("MAIN", "MAIN/projectA");
+		conflicts = reviewService.getMergeReviewConflictingConcepts(review.getId(), new ArrayList<>());
+		assertTrue(conflicts.isEmpty());
+		reviewService.applyMergeReview(review);
+
+		// Rebase Project onto Task B (somehow, somewhere, the release status is lost on Task B)
+		rebaseAndLoseReleaseStatus(foodHierarchy, "MAIN/projectA", "MAIN/projectA/taskB");
+
+		// Promote Task B to Project
+		branchMergeService.mergeBranchSync("MAIN/projectA/taskB", "MAIN/projectA", Collections.emptySet());
+
+		// After promotion, Concept on Project is no longer versioned
+		concept = conceptService.find(foodHierarchy, "MAIN/projectA");
+		assertNotVersioned(concept);
+
+		// Assert Axiom ReferenceSetMembers
+		Set<String> axiomMembersOnCodeSystem = new HashSet<>();
+		Set<String> axiomMembersOnProject = new HashSet<>();
+		memberService.findMembers("MAIN", foodHierarchy, PageRequest.of(0, 10)).forEach(member -> axiomMembersOnCodeSystem.add(member.getMemberId()));
+		memberService.findMembers("MAIN/projectA", foodHierarchy, PageRequest.of(0, 10)).forEach(member -> axiomMembersOnProject.add(member.getMemberId()));
+		axiomMembersOnCodeSystem.removeAll(axiomMembersOnProject);
+		assertTrue(axiomMembersOnCodeSystem.isEmpty()); // If all removed, there are no duplicates
+
+		// Assert Language ReferenceSetMembers
+		Set<String> langMembersOnCodeSystem = new HashSet<>();
+		Set<String> langMembersOnProject = new HashSet<>();
+		for (Description description : concept.getDescriptions()) {
+			memberService.findMembers("MAIN", description.getDescriptionId(), PageRequest.of(0, 10)).forEach(member -> langMembersOnCodeSystem.add(member.getMemberId()));
+		}
+		for (Description description : concept.getDescriptions()) {
+			memberService.findMembers("MAIN/projectA", description.getDescriptionId(), PageRequest.of(0, 10)).forEach(member -> langMembersOnProject.add(member.getMemberId()));
+		}
+		langMembersOnCodeSystem.removeAll(langMembersOnProject);
+		assertTrue(langMembersOnCodeSystem.isEmpty()); // If all removed, there are no duplicates
+	}
+
+	/*
+	 * Currently, there is a "duplicate language reference set" bug which I suspect is caused from a "component not visible on parent branch" bug.
+	 * In order to reproduce the "duplicate language reference set" bug, I need to reproduce the "component not visible on parent branch" bug.
+	 * */
+	private void rebaseAndLoseReleaseStatus(String conceptId, String source, String target) throws InterruptedException, ServiceException {
+		// Hack: hide all Components at the start of the rebase
+		conceptService.deleteConceptAndComponents(conceptId, source, true);
+
+		// Rebase source onto target
+		MergeReview review = getMergeReviewInCurrentState(source, target);
+		reviewService.getMergeReviewConflictingConcepts(review.getId(), new ArrayList<>());
+
+		// Hack: Restore all Components at the end of the rebase
+		Concept concept = conceptService.find(conceptId, "MAIN");
+		conceptService.create(concept, source);
+
+		// Finalise rebase
+		reviewService.applyMergeReview(review);
+
+		// Lost release status
+		concept = conceptService.find(conceptId, target);
+		assertNotVersioned(concept);
+	}
+
+	private void assertNotVersioned(Concept concept) {
+		assertFalse(concept.isReleased());
+		assertNull(concept.getReleaseHash());
+		assertNull(concept.getReleasedEffectiveTime());
+		assertNull(concept.getEffectiveTimeI());
+	}
+
 	private void assertNotVersioned(Description description) {
 		assertNull(description.getEffectiveTime());
 		assertFalse(description.isReleased());
