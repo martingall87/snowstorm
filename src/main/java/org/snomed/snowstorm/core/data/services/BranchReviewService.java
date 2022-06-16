@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import io.kaicode.elasticvc.api.BranchService;
+import io.kaicode.elasticvc.api.PathUtil;
 import io.kaicode.elasticvc.api.VersionControlHelper;
 import io.kaicode.elasticvc.domain.Branch;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -13,6 +14,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.search.sort.SortBuilders;
+import org.elasticsearch.search.sort.SortOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.snomed.snowstorm.core.data.domain.*;
@@ -23,6 +25,7 @@ import org.snomed.snowstorm.core.data.repositories.MergeReviewRepository;
 import org.snomed.snowstorm.core.pojo.LanguageDialect;
 import org.snomed.snowstorm.core.util.TimerUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHitsIterator;
 import org.springframework.data.elasticsearch.core.query.NativeSearchQuery;
@@ -468,9 +471,139 @@ public class BranchReviewService {
 		start.setTime(start.getTime() + 1);
 
 		Set<Long> changedConcepts = createConceptChangeReportOnBranchForTimeRange(source.getPath(), start, source.getHead(), branchReview.isSourceParent());
+		changedConcepts.addAll(getContradictoryConceptIdentifiers(branchReview, source, target));
 		branchReview.setStatus(ReviewStatus.CURRENT);
 		branchReview.setChangedConcepts(changedConcepts);
 		branchReviewRepository.save(branchReview);
+	}
+
+	/*
+	 * Return Concept identifiers where one side of the merge has added a Description to a Concept, whilst the other
+	 * side has deleted the Concept entirely.
+	 * */
+	private Set<Long> getContradictoryConceptIdentifiers(BranchReview branchReview, Branch source, Branch target) {
+		Set<Long> contradictoryConceptIdentifiers = new HashSet<>();
+
+		// Deleted on Source but modified on Target
+		String sourcePath = source.getPath();
+		String targetPath = target.getPath();
+		Set<String> versionsReplaced = branchService.findLatest(targetPath).getVersionsReplaced(Concept.class);
+		if (!versionsReplaced.isEmpty()) {
+			List<Long> concepts = new ArrayList<>(mapInternalIdentifiersToConceptIdentifiers(versionsReplaced, sourcePath));
+			removeIfFoundOnPath(concepts, targetPath); // If found, then not deleted
+
+			contradictoryConceptIdentifiers.addAll(concepts);
+		}
+
+		// Modified on Source but deleted on Target
+		List<String> conceptIdsWithModifiedDescriptions = new ArrayList<>();
+		try (final SearchHitsIterator<Description> stream = elasticsearchTemplate.searchForStream(
+				newSearchQuery(versionControlHelper.getUpdatesOnBranchDuringRangeCriteria(sourcePath, getStart(branchReview, source, target), source.getHead())).build(), Description.class)
+		) {
+			stream.forEachRemaining(hit -> conceptIdsWithModifiedDescriptions.add(hit.getContent().getConceptId()));
+		}
+
+		Map<Long, Date> conceptsEndedOnTarget = new HashMap<>();
+		for (String conceptId : conceptIdsWithModifiedDescriptions) {
+			try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
+					.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
+					.withQuery(
+							boolQuery()
+									.must(matchQuery(Description.Fields.CONCEPT_ID, conceptId))
+									.must(matchQuery(Description.Fields.PATH, targetPath))
+					)
+					.build(), Concept.class)) {
+				stream.forEachRemaining(hit -> {
+					Concept concept = hit.getContent();
+
+					boolean endedOnTarget = concept.getEnd() != null && targetPath.equals(concept.getPath());
+					if (endedOnTarget) {
+						conceptsEndedOnTarget.put(parseLong(conceptId), concept.getEnd());
+					}
+				});
+			}
+		}
+
+		Iterator<Map.Entry<Long, Date>> iterator = conceptsEndedOnTarget.entrySet().iterator();
+		String targetParentPath = PathUtil.getParentPath(targetPath);
+		if (targetParentPath != null) {
+			// Confirm reason for ending documents, i.e. promotion or deletion
+			removeIfPromoted(conceptsEndedOnTarget, targetParentPath);
+		}
+
+		contradictoryConceptIdentifiers.addAll(conceptsEndedOnTarget.keySet());
+
+		return contradictoryConceptIdentifiers;
+	}
+
+	private Set<Long> mapInternalIdentifiersToConceptIdentifiers(Set<String> internalIds, String path) {
+		Set<Long> conceptIdentifiers = new HashSet<>();
+		for (String internalId : internalIds) {
+			try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
+					.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
+					.withPageable(PageRequest.of(0, 1))
+					.withQuery(
+							boolQuery()
+									.must(termQuery("_id", internalId))
+									.must(termQuery(Concept.Fields.PATH, path))
+					)
+					.build(), Concept.class)) {
+				stream.forEachRemaining(hit -> conceptIdentifiers.add(parseLong(hit.getContent().getConceptId())));
+			}
+		}
+
+		return conceptIdentifiers;
+	}
+
+	private void removeIfFoundOnPath(List<Long> concepts, String path) {
+		Iterator<Long> iterator = concepts.iterator();
+		while (iterator.hasNext()) {
+			try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
+					.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
+					.withPageable(PageRequest.of(0, 1))
+					.withQuery(
+							boolQuery()
+									.must(termQuery(Concept.Fields.CONCEPT_ID, iterator.next()))
+									.must(termQuery(Concept.Fields.PATH, path))
+					)
+					.build(), Concept.class)) {
+				stream.forEachRemaining(hit -> iterator.remove());
+			}
+		}
+	}
+
+	private void removeIfPromoted(Map<Long, Date> concepts, String path) {
+		Iterator<Map.Entry<Long, Date>> iterator = concepts.entrySet().iterator();
+		while (iterator.hasNext()) {
+			Map.Entry<Long, Date> entrySet = iterator.next();
+			Long conceptId = entrySet.getKey();
+			Date endDate = entrySet.getValue();
+
+			try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
+					.withQuery(
+							boolQuery()
+									.must(termQuery(Description.Fields.CONCEPT_ID, conceptId))
+									.must(termQuery(Description.Fields.PATH, path))
+									.must(termQuery(Description.Fields.START, endDate.getTime()))
+					)
+					.build(), Concept.class)) {
+				stream.forEachRemaining(hit -> iterator.remove());
+			}
+		}
+	}
+
+	private Date getStart(BranchReview branchReview, Branch source, Branch target) {
+		Date start;
+		if (branchReview.isSourceParent()) {
+			start = target.getBase();
+		} else {
+			start = source.getLastPromotion();
+			if (start == null) {
+				start = source.getCreation();
+			}
+		}
+
+		return start;
 	}
 
 	Set<Long> createConceptChangeReportOnBranchForTimeRange(String path, Date start, Date end, boolean sourceIsParent) {
