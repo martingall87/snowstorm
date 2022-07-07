@@ -504,24 +504,19 @@ public class BranchReviewService {
 		}
 
 		Map<Long, Date> conceptsEndedOnTarget = new HashMap<>();
-		for (String conceptId : conceptIdsWithModifiedDescriptions) {
-			try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
-					.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
-					.withQuery(
-							boolQuery()
-									.must(matchQuery(Description.Fields.CONCEPT_ID, conceptId))
-									.must(matchQuery(Description.Fields.PATH, targetPath))
-					)
-					.build(), Concept.class)) {
-				stream.forEachRemaining(hit -> {
-					Concept concept = hit.getContent();
-
-					boolean endedOnTarget = concept.getEnd() != null && targetPath.equals(concept.getPath());
-					if (endedOnTarget) {
-						conceptsEndedOnTarget.put(parseLong(conceptId), concept.getEnd());
-					}
-				});
-			}
+		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
+				.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
+				.withQuery(
+						boolQuery()
+								.must(termsQuery(Description.Fields.CONCEPT_ID, conceptIdsWithModifiedDescriptions))
+								.must(matchQuery(Description.Fields.PATH, targetPath))
+								.must(existsQuery(Description.Fields.END))
+				)
+				.build(), Concept.class)) {
+			stream.forEachRemaining(hit -> {
+				Concept concept = hit.getContent();
+				conceptsEndedOnTarget.put(parseLong(concept.getConceptId()), concept.getEnd());
+			});
 		}
 
 		Iterator<Map.Entry<Long, Date>> iterator = conceptsEndedOnTarget.entrySet().iterator();
