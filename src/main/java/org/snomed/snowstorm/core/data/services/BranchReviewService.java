@@ -505,12 +505,12 @@ public class BranchReviewService {
 
 		Map<Long, Date> conceptsEndedOnTarget = new HashMap<>();
 		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
-				.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
+				.withSort(SortBuilders.fieldSort(Concept.Fields.START).order(SortOrder.DESC))
 				.withQuery(
 						boolQuery()
-								.must(termsQuery(Description.Fields.CONCEPT_ID, conceptIdsWithModifiedDescriptions))
-								.must(matchQuery(Description.Fields.PATH, targetPath))
-								.must(existsQuery(Description.Fields.END))
+								.must(termsQuery(Concept.Fields.CONCEPT_ID, conceptIdsWithModifiedDescriptions))
+								.must(matchQuery(Concept.Fields.PATH, targetPath))
+								.must(existsQuery(Concept.Fields.END))
 				)
 				.build(), Concept.class)) {
 			stream.forEachRemaining(hit -> {
