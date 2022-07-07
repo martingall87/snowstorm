@@ -484,7 +484,7 @@ public class BranchReviewService {
 	private Set<Long> getContradictoryConceptIdentifiers(BranchReview branchReview, Branch source, Branch target) {
 		Set<Long> contradictoryConceptIdentifiers = new HashSet<>();
 
-		// Deleted on Source but modified on Target
+		// Deleted on Target, i.e. MAIN/projectA -> MAIN/projectA/taskB
 		String sourcePath = source.getPath();
 		String targetPath = target.getPath();
 		Set<String> versionsReplaced = branchService.findLatest(targetPath).getVersionsReplaced(Concept.class);
@@ -495,7 +495,7 @@ public class BranchReviewService {
 			contradictoryConceptIdentifiers.addAll(concepts);
 		}
 
-		// Modified on Source but deleted on Target
+		// Modified on Source but ended on Target, i.e. MAIN/projectA/taskB -> MAIN/projectA
 		List<String> conceptIdsWithModifiedDescriptions = new ArrayList<>();
 		try (final SearchHitsIterator<Description> stream = elasticsearchTemplate.searchForStream(
 				newSearchQuery(versionControlHelper.getUpdatesOnBranchDuringRangeCriteria(sourcePath, getStart(branchReview, source, target), source.getHead())).build(), Description.class)
