@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.snomed.otf.snomedboot.testutil.ZipUtil;
 import org.snomed.snowstorm.AbstractTest;
 import org.snomed.snowstorm.core.data.domain.*;
+import org.snomed.snowstorm.core.data.domain.review.MergeReview;
+import org.snomed.snowstorm.core.data.domain.review.MergeReviewConceptVersions;
 import org.snomed.snowstorm.core.data.services.traceability.Activity;
 import org.snomed.snowstorm.core.data.services.traceability.TraceabilityLogService;
 import org.snomed.snowstorm.core.rf2.RF2Type;
@@ -20,8 +22,8 @@ import java.io.IOException;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.snomed.snowstorm.core.data.domain.Concepts.ISA;
-import static org.snomed.snowstorm.core.data.domain.Concepts.PRIMITIVE;
+import static org.snomed.snowstorm.core.data.domain.Concepts.*;
+import static org.snomed.snowstorm.core.data.domain.review.ReviewStatus.PENDING;
 import static org.snomed.snowstorm.core.data.services.traceability.Activity.ActivityType.*;
 
 class TraceabilityLogServiceTest extends AbstractTest {
@@ -46,6 +48,9 @@ class TraceabilityLogServiceTest extends AbstractTest {
 
 	@Autowired
 	private ReferenceSetMemberService referenceSetMemberService;
+
+	@Autowired
+	private BranchReviewService reviewService;
 
 	private boolean traceabilityOriginallyEnabled;
 
@@ -246,6 +251,114 @@ class TraceabilityLogServiceTest extends AbstractTest {
 		assertEquals(REBASE, activity.getActivityType());
 		assertEquals("MAIN/A", activity.getBranchPath());
 		assertEquals("MAIN", activity.getSourceBranch());
+	}
+
+	@Test
+	void traceabilityPurged() throws InterruptedException, ServiceException {
+		/*
+		Test case:
+			1. Create a task on project A to make changes to a concept and run classification.
+			2. Create a task on project B and make same changes as Step 1
+			3. Promote task on project B and promote project B to MAIN
+			4. Rebase project A with MAIN
+			5. Rebase task on project A
+			6. Version MAIN
+			7. Rebase Project A and promote A to MAIN
+			8. Traceability report should be clean.
+		 */
+
+		String ci = "CASE_INSENSITIVE";
+		Map<String, String> intAcceptable = Map.of(US_EN_LANG_REFSET, descriptionAcceptabilityNames.get(PREFERRED), GB_EN_LANG_REFSET, descriptionAcceptabilityNames.get(ACCEPTABLE));
+
+		// Create a concept on MAIN
+		Concept concept = conceptService.create(new Concept().addFSN("Sore toe").addRelationship(ISA, Concepts.CLINICAL_FINDING), MAIN);
+		String conceptId = concept.getConceptId();
+
+		// Versioning
+		CodeSystem codeSystem = codeSystemService.createCodeSystem(new CodeSystem("SNOMEDCT", MAIN));
+		codeSystemService.createVersion(codeSystem, 20220131, "");
+		clearActivities();
+
+		// Create project A
+		String projectA = "MAIN/projectA";
+		branchService.create(projectA);
+
+		// Create task A
+		String taskA = "MAIN/projectA/taskA";
+		branchService.create(taskA);
+
+		concept = conceptService.find(conceptId, taskA);
+		concept.addDescription(new Description("Toe pain").setTypeId(SYNONYM).setCaseSignificance(ci).setAcceptabilityMap(intAcceptable));
+		conceptService.update(concept, taskA);
+
+		// Create project B
+		String projectB = "MAIN/projectB";
+		branchService.create(projectB);
+
+		// Create task B
+		String taskB = "MAIN/projectB/taskB";
+		branchService.create(taskB);
+
+		concept = conceptService.find(conceptId, taskB);
+		concept.addDescription(new Description("Toe pain").setTypeId(SYNONYM).setCaseSignificance(ci).setAcceptabilityMap(intAcceptable));
+		conceptService.update(concept, taskB);
+
+		//Promote task on project B
+		branchMergeService.mergeBranchSync(taskB, projectB, Collections.emptySet());
+		// .. and promote project B to MAIN
+		branchMergeService.mergeBranchSync(projectB, MAIN, Collections.emptySet());
+
+		//Rebase project A with MAIN
+		MergeReview review = getMergeReviewInCurrentState(MAIN, projectA);
+		Collection<MergeReviewConceptVersions> conflicts = reviewService.getMergeReviewConflictingConcepts(review.getId(), new ArrayList<>());
+		assertEquals(0, conflicts.size());
+		reviewService.applyMergeReview(review);
+
+		//Rebase task A with project A
+		review = getMergeReviewInCurrentState(projectA, taskA);
+		conflicts = reviewService.getMergeReviewConflictingConcepts(review.getId(), new ArrayList<>());
+		assertEquals(1, conflicts.size());
+		for (MergeReviewConceptVersions conflict : conflicts) {
+			Concept autoMergedConcept = conflict.getAutoMergedConcept();
+			reviewService.persistManuallyMergedConcept(review, Long.parseLong(conceptId), autoMergedConcept);
+		}
+		reviewService.applyMergeReview(review);
+
+		//Version MAIN
+		codeSystemService.createVersion(codeSystem, 20220331, "");
+
+		// TODO remove too much repeated code for rebase !
+		//Rebase Project A and promote A to MAIN
+		review = getMergeReviewInCurrentState(MAIN, projectA);
+		conflicts = reviewService.getMergeReviewConflictingConcepts(review.getId(), new ArrayList<>());
+		assertEquals(0, conflicts.size());
+		reviewService.applyMergeReview(review);
+
+//		review = getMergeReviewInCurrentState(projectA, taskA);
+//		conflicts = reviewService.getMergeReviewConflictingConcepts(review.getId(), new ArrayList<>());
+//		assertEquals(0, conflicts.size());
+//		reviewService.applyMergeReview(review);
+
+		//Promote task on project A
+		branchMergeService.mergeBranchSync(taskA, projectA, Collections.emptySet());
+		// .. and promote project A to MAIN
+		branchMergeService.mergeBranchSync(projectA, MAIN, Collections.emptySet());
+
+		System.out.println("stop");
+	}
+
+	// TODO - move to abstract class
+	private MergeReview getMergeReviewInCurrentState(String source, String target) throws InterruptedException {
+		MergeReview review = reviewService.createMergeReview(source, target);
+
+		long maxWait = 10;
+		long cumulativeWait = 0;
+		while (review.getStatus() == PENDING && cumulativeWait < maxWait) {
+			//noinspection BusyWait
+			Thread.sleep(1_000);
+			cumulativeWait++;
+		}
+		return review;
 	}
 
 
