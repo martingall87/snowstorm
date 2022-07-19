@@ -533,37 +533,32 @@ public class BranchReviewService {
 
 	private Set<Long> mapInternalIdentifiersToConceptIdentifiers(Set<String> internalIds, String path) {
 		Set<Long> conceptIdentifiers = new HashSet<>();
-		for (String internalId : internalIds) {
-			try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
-					.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
-					.withPageable(PageRequest.of(0, 1))
-					.withQuery(
-							boolQuery()
-									.must(termQuery("_id", internalId))
-									.must(termQuery(Concept.Fields.PATH, path))
-					)
-					.build(), Concept.class)) {
-				stream.forEachRemaining(hit -> conceptIdentifiers.add(parseLong(hit.getContent().getConceptId())));
-			}
+		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
+				.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
+				.withPageable(PageRequest.of(0, 1))
+				.withQuery(
+						boolQuery()
+								.must(termsQuery("_id", internalIds))
+								.must(termQuery(Concept.Fields.PATH, path))
+				)
+				.build(), Concept.class)) {
+			stream.forEachRemaining(hit -> conceptIdentifiers.add(parseLong(hit.getContent().getConceptId())));
 		}
 
 		return conceptIdentifiers;
 	}
 
 	private void removeIfFoundOnPath(List<Long> concepts, String path) {
-		Iterator<Long> iterator = concepts.iterator();
-		while (iterator.hasNext()) {
-			try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
-					.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
-					.withPageable(PageRequest.of(0, 1))
-					.withQuery(
-							boolQuery()
-									.must(termQuery(Concept.Fields.CONCEPT_ID, iterator.next()))
-									.must(termQuery(Concept.Fields.PATH, path))
-					)
-					.build(), Concept.class)) {
-				stream.forEachRemaining(hit -> iterator.remove());
-			}
+		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
+				.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
+				.withPageable(PageRequest.of(0, 1))
+				.withQuery(
+						boolQuery()
+								.must(termsQuery(Concept.Fields.CONCEPT_ID, concepts))
+								.must(termQuery(Concept.Fields.PATH, path))
+				)
+				.build(), Concept.class)) {
+			stream.forEachRemaining(hit -> concepts.removeIf(e -> e.equals(hit.getId())));
 		}
 	}
 
