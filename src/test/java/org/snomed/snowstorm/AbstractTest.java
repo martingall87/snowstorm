@@ -13,6 +13,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.snomed.snowstorm.core.data.domain.Concept;
 import org.snomed.snowstorm.core.data.domain.QueryConcept;
 import org.snomed.snowstorm.core.data.domain.ReferenceSetMember;
+import org.snomed.snowstorm.core.data.domain.review.MergeReview;
+import org.snomed.snowstorm.core.data.services.BranchReviewService;
 import org.snomed.snowstorm.core.data.services.CodeSystemService;
 import org.snomed.snowstorm.core.data.services.ConceptService;
 import org.snomed.snowstorm.core.data.services.PermissionService;
@@ -40,6 +42,7 @@ import java.util.Stack;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.snomed.snowstorm.core.data.domain.Concepts.REFSET_MRCM_ATTRIBUTE_RANGE_INTERNATIONAL;
+import static org.snomed.snowstorm.core.data.domain.review.ReviewStatus.PENDING;
 
 @ExtendWith(SpringExtension.class)
 @Testcontainers
@@ -74,6 +77,9 @@ public abstract class AbstractTest {
 
 	@Autowired
 	private ElasticsearchOperations elasticsearchOperations;
+
+	@Autowired
+	private BranchReviewService reviewService;
 
 	@Value("${ims-security.roles.enabled}")
 	private boolean rolesEnabled;
@@ -165,5 +171,18 @@ public abstract class AbstractTest {
 		Query deleteQuery = new NativeSearchQueryBuilder().withQuery(new MatchAllQueryBuilder()).build();
 		elasticsearchOperations.delete(deleteQuery, clazz, elasticsearchOperations.getIndexCoordinatesFor(clazz));
 		elasticsearchOperations.indexOps(clazz).refresh();
+	}
+
+	protected MergeReview getMergeReviewInCurrentState(String source, String target) throws InterruptedException {
+		MergeReview review = reviewService.createMergeReview(source, target);
+
+		long maxWait = 10;
+		long cumulativeWait = 0;
+		while (review.getStatus() == PENDING && cumulativeWait < maxWait) {
+			//noinspection BusyWait
+			Thread.sleep(1_000);
+			cumulativeWait++;
+		}
+		return review;
 	}
 }

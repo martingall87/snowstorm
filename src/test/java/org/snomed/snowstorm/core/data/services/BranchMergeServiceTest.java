@@ -3649,19 +3649,6 @@ class BranchMergeServiceTest extends AbstractTest {
 		return page.getContent().iterator().next();
 	}
 
-	private MergeReview getMergeReviewInCurrentState(String source, String target) throws InterruptedException {
-		MergeReview review = reviewService.createMergeReview(source, target);
-
-		long maxWait = 10;
-		long cumulativeWait = 0;
-		while (review.getStatus() == PENDING && cumulativeWait < maxWait) {
-			//noinspection BusyWait
-			Thread.sleep(1_000);
-			cumulativeWait++;
-		}
-		return review;
-	}
-
 	/**
 	 * Set up a content conflict situation.
 	 * Three versions of the same concept should be given.
