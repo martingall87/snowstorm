@@ -556,7 +556,12 @@ public class BranchReviewService {
 								.must(termQuery(Concept.Fields.PATH, path))
 				)
 				.build(), Concept.class)) {
-			stream.forEachRemaining(hit -> concepts.removeIf(e -> e.equals(hit.getId())));
+			stream.forEachRemaining(hit -> {
+				String id = hit.getContent().getConceptId();
+				if (id != null) {
+					concepts.removeIf(e -> e.equals(Long.parseLong(id)));
+				}
+			});
 		}
 	}
 
