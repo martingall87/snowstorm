@@ -508,7 +508,7 @@ public class BranchReviewService {
 				.withQuery(
 						boolQuery()
 								.must(termsQuery(Concept.Fields.CONCEPT_ID, conceptIdsWithModifiedDescriptions))
-								.must(matchQuery(Concept.Fields.PATH, targetPath))
+								.must(termQuery(Concept.Fields.PATH, targetPath))
 								.must(existsQuery(Concept.Fields.END))
 				)
 						.withFields(Concept.Fields.CONCEPT_ID, Concept.Fields.END)
