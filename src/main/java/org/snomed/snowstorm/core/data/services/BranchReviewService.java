@@ -505,7 +505,6 @@ public class BranchReviewService {
 
 		Map<Long, Date> conceptsEndedOnTarget = new HashMap<>();
 		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
-				.withSort(SortBuilders.fieldSort(Concept.Fields.START).order(SortOrder.DESC))
 				.withQuery(
 						boolQuery()
 								.must(termsQuery(Concept.Fields.CONCEPT_ID, conceptIdsWithModifiedDescriptions))
@@ -534,7 +533,6 @@ public class BranchReviewService {
 	private Set<Long> mapInternalIdentifiersToConceptIdentifiers(Set<String> internalIds, String path) {
 		Set<Long> conceptIdentifiers = new HashSet<>();
 		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
-				.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
 				.withPageable(PageRequest.of(0, 1))
 				.withQuery(
 						boolQuery()
@@ -550,7 +548,6 @@ public class BranchReviewService {
 
 	private void removeIfFoundOnPath(List<Long> concepts, String path) {
 		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
-				.withSort(SortBuilders.fieldSort(Description.Fields.START).order(SortOrder.DESC))
 				.withPageable(PageRequest.of(0, 1))
 				.withQuery(
 						boolQuery()
