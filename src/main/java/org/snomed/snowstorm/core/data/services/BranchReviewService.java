@@ -498,7 +498,7 @@ public class BranchReviewService {
 		// Modified on Source but ended on Target, i.e. MAIN/projectA/taskB -> MAIN/projectA
 		List<String> conceptIdsWithModifiedDescriptions = new ArrayList<>();
 		try (final SearchHitsIterator<Description> stream = elasticsearchTemplate.searchForStream(
-				newSearchQuery(versionControlHelper.getUpdatesOnBranchDuringRangeCriteria(sourcePath, getStart(branchReview, source, target), source.getHead())).build(), Description.class)
+				newSearchQuery(versionControlHelper.getUpdatesOnBranchDuringRangeCriteria(sourcePath, getStart(branchReview, source, target), source.getHead())).withFields(Description.Fields.CONCEPT_ID).build(), Description.class)
 		) {
 			stream.forEachRemaining(hit -> conceptIdsWithModifiedDescriptions.add(hit.getContent().getConceptId()));
 		}
@@ -511,6 +511,7 @@ public class BranchReviewService {
 								.must(matchQuery(Concept.Fields.PATH, targetPath))
 								.must(existsQuery(Concept.Fields.END))
 				)
+						.withFields(Concept.Fields.CONCEPT_ID, Concept.Fields.END)
 				.build(), Concept.class)) {
 			stream.forEachRemaining(hit -> {
 				Concept concept = hit.getContent();
@@ -573,6 +574,7 @@ public class BranchReviewService {
 									.must(termQuery(Description.Fields.PATH, path))
 									.must(termQuery(Description.Fields.START, endDate.getTime()))
 					)
+					.withFields(Concept.Fields.CONCEPT_ID)
 					.build(), Concept.class)) {
 				stream.forEachRemaining(hit -> iterator.remove());
 			}
