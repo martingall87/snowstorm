@@ -534,7 +534,7 @@ public class BranchReviewService {
 	private Set<Long> mapInternalIdentifiersToConceptIdentifiers(Set<String> internalIds, String path) {
 		Set<Long> conceptIdentifiers = new HashSet<>();
 		try (final SearchHitsIterator<Concept> stream = elasticsearchTemplate.searchForStream(new NativeSearchQueryBuilder()
-				.withPageable(PageRequest.of(0, 1))
+				.withPageable(PageRequest.of(0, internalIds.size()))
 				.withQuery(
 						boolQuery()
 								.must(termsQuery("_id", internalIds))
