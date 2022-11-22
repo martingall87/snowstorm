@@ -13,10 +13,13 @@ import org.snomed.snowstorm.core.data.services.pojo.IntegrityIssueReport;
 import org.snomed.snowstorm.dailybuild.DailyBuildService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.snomed.snowstorm.core.data.services.BranchMetadataHelper.INTERNAL_METADATA_KEY;
 import static org.snomed.snowstorm.core.data.services.BranchMetadataKeys.DEPENDENCY_PACKAGE;
@@ -46,6 +49,12 @@ public class CodeSystemUpgradeService {
 
 	@Autowired
 	private UpgradeInactivationService upgradeInactivationService;
+
+	@Value("${jms.queue.prefix}")
+	private String jmsQueuePrefix;
+
+	@Autowired
+	private JmsTemplate jmsTemplate;
 
 	@Value("${snowstorm.rest-api.readonly}")
 	private boolean isReadOnly;
@@ -105,6 +114,14 @@ public class CodeSystemUpgradeService {
 			updateBranchMetaData(branchPath, newParentVersion, extensionBranch, integrityReport.isEmpty());
 			logger.info("Upgrade completed on {}", branchPath);
 
+
+			Map upgradeCompleteMessageBody = new HashMap();
+			upgradeCompleteMessageBody.put("codeSystemShortName", codeSystem.getShortName());
+			upgradeCompleteMessageBody.put("newDependantVersion", newDependantVersion);
+
+			// Send JMS CodeSystem Upgrade Complete Notification
+			logger.info("Send JMS CodeSystem Upgrade Complete: {}", upgradeCompleteMessageBody);
+			jmsTemplate.convertAndSend(jmsQueuePrefix + ".code-system.upgrade.complete", upgradeCompleteMessageBody);
 		} finally {
 			// Re-enable daily build
 			if (dailyBuildAvailable) {
