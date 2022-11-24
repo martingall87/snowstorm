@@ -3,7 +3,199 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 7.12.0 Release (November 2022)
+Maintenance release with bug fixes and improvements.
+### Improvements
+- General
+  - MAINT-1974 Add optional configuration to allow new ReferenceSet types to be configured on branch other than MAIN.
+  
+### Fixes
+- MAINT-2071 Remove communication with Authoring Acceptance Gateway when completing classifications.
+- MAINT-1940 Stop inactive historical associations switching module when rebasing.
+- FRI-565 Correct Extension's traceability log when performing rebase after upgrading dependency.
 
+## 7.11.0 Release (October 2022)
+Maintenance release with bug fixes and improvements.
+### Improvements
+- General
+  - MAINT-2037 Add `descriptionIds` as optional request parameter to `/{branch}/descriptions` endpoint
+  - MAINT-1439 Add `/user-group/{userGroup}` endpoint for retrieving permissions associated with User Group
+  - FRI-443 Send large Traceability JMS messages in batches
+  - MAINT-2044 Remove unused and commented-out code in WebConfig
+  - MAINT-2052 Revert re-used ReferenceSetMember if no longer required
+- Authoring
+  - FRI-480 Add new rule for ensuring defined Concepts must have at least one defining Relationship
+
+### Fixes
+- MAINT-1961 Fix `/browser/{branch}/concepts/bulk` endpoint from hanging if Branch doesn't exist
+- MAINT-2036 Fix adding multiple, new historical associations to an inactive Concept from failing
+- BROWSE-461 Fix parsing of ECL statements with nested `Parent of` and `Or` operations
+- MAINT-1969 Fix published components from losing their released flags during rebase
+- MAINT-1862 Fix `searchAfter` request parameter to work with ECL dot notation
+- MAINT-2051 Fix the changing of a Concept's inactivation reason from resulting in duplicate ReferenceSetMembers
+
+## 7.10.0 Release (September 2022)
+Maintenance release with integration support for [Consul](https://www.consul.io/) and [Vault](https://www.vaultproject.io/)
+### Features
+  - PIP-181 Add integration support for [Consul](https://www.consul.io/) and [Vault](https://www.vaultproject.io/). 
+    See [spring-cloud-consul](https://cloud.spring.io/spring-cloud-consul/reference/html/) and [spring-vault](https://cloud.spring.io/spring-cloud-vault/reference/html/) for more information about setups and configuration.
+  - BROWSE-427 Add support for resolution of version specific URIs.
+
+### Improvements
+ - General
+   - MAINT-1921 Upgrade Spring Boot to 2.7.0 and migrate swagger-ui to springdoc-openapi from SpringFox.
+   - PIP-182 Improve Snowstorm communication with `Authoring Acceptance Gateway` (AAG) service during start-up.
+   - FRI-475 Update security config to check roles required when `ims-security.roles.enabled` is true.
+ - Authoring 
+   - MAINT-1993 Update drools rules to check active GCIs only.
+   - MAINT-2032 Remove old redundant ECL parser generation files.
+   - BROWSE-506 Use correct branch in browser for version-relative URIs.
+   - FRI-474 Refactor traceability log service to handle superseded changes during rebase.
+   - FRI-471 Allow `ADMIN` and `MANAGER` roles to update code system versions.
+   - FRI-490 Extend import APIs to allow user to specify module ids.
+
+### Fixes
+  - ISTO-42 Fix ECL caching bug.
+  - MAINT-1743 Fix loss of effective time in components saved during rebase.
+  - MAINT-1999 Avoid persisting refset members unnecessarily when saving concepts.
+  - MAINT-2003 Correct default language refset configuration for `es`
+
+
+
+## 7.9.3 Release (June 2022)
+### Breaking
+  - ISTO-16 Add support for ECL 2.0. Snowstorm now requires all ECL queries to be valid according to ECL 2.0 specification. 
+    See [SNOMED CT Expression Constraint Language](https://github.com/IHTSDO/snomed-expression-constraint-language) for more details about syntax and examples.
+### Features
+  - MAINT-1644 Concepts donation via ECL.
+
+### Improvements
+  - MAINT-1960 Prevent SCTID cache setup for new partition/namespace if original request for identifiers fails.
+  - MAINT-1945 Updated logic of DescriptionDroolsValidationService when finding the parents that not containing a specific semantic tag.
+  - ISTO-32 Separate test indices for FHIR. This avoids branch already exists error when the FHIR test context does not tear down fast enough.
+  - FRI-460 Only returns versions of a code system when the date of release is after the current date.
+  - FRI-123 Add CommitServiceHookClient to ClassificationService
+
+### Fixes
+  - MAINT-1968 Fix code quality warnings and remove unused variables reported by LGTM.
+  - MAINT-1991 Delete temp file after RF2 import is done to avoid concurrency issue.
+  - FRI-444 Log components from the parent branch in traceability activities when changes on task are discarded during rebase.
+
+
+## 7.8.0 Release (May 2022)
+Maintenance release with bug fixes and improvements.
+
+### Fixes
+  - Fix 379 Set default Language Reference Set for a given language
+  - Fix 388 Update security-configuration.md documentation
+
+### Improvements
+  - FRI-424 Simplify `new-authoring-cycle` endpoint by removing redundant request parameters
+  - FRI-410 Add support for circular dependencies and empty modules in MDRS generation
+  - MAINT-1918 Fix export of ICD-10 to appear in ExtendedMap instead of ComplexMap 
+  - FRI-210 Improve concept merge screen to preserve International changes after Extension upgrade
+  - MAINT-1911 Add Description inactivation reason "GRAMMATICAL_DESCRIPTION_ERROR"
+  - MAINT-1828 Update version of snomed-owl-toolkit to 3.0.7
+  - MAINT-1841 Set transient stated Relationships to have same moduleId as parent axiom
+  - FRI-404 Only return versions of a CodeSystem when the date of release is after the current date
+  - FRI-414 Return metadata related to the Descriptor Reference Set when saving/updating a Concept
+  - MAINT-1902 Retain Admin user groups after restarting service
+  - MAINT-1807 Make Relationships move module when inactivated in an Extension  
+  - FRI-370 Add endpoint for retrieving all semantic tags
+  - MAINT-1003 Reuse existing inactivation/association ReferenceSetMembers when updating metadata
+
+## 7.7.0 Release (Feb 2022)
+
+### Breaking
+- General
+  - When using `returnIdOnly` parameter; the ids returned now use 'string' rather than 'number' JSON data type, to avoid rounding. Fixes #367.
+
+### Improvements
+  - General
+    - Add `searchAfter` request parameter to `/browser/{branch}/members` endpoint for querying 10K+ records.
+    - `latestDailyBuild` property added to `CodeSystem`
+  - Authoring
+    - FRI-234 Prevent versioned content being deleted when performing rebase.
+    - FRI-365 When Concepts are re-activated in an extension module, various historical associations and inactivation indicators are inactivated in the same extension module.
+    - MAINT-1871 Fix bug in IntegrityService to handle branch paths with more than 4 levels.
+    - FRI-393 Simple additional module now correctly assumes it is dependent on Core Module.
+    - FRI-388 Use existing responseMessageStatusQueue for classification status.
+    - MAINT-1882 Exclude MRCM reference sets when importing IPS terminology.
+    - MAINT-1883 Exclude Module Dependency reference set in exported archive when `unpromotedChangesOnly` flag is `true`.
+     
+## 7.6.0 Release (Jan 2022)
+Minor release with bug fixes and improvements.
+
+### Features
+- Authoring
+  - FRI-27 Retrieve classification status via JMS optionally. To enable this you need to set `classification-service.job.status.use-jms=true`
+  and add the queue name in `classification-service.message.status.destination` parameter. It works with classification service 6.1.0 onwards.
+  - MAINT-1791 Add new inactivation reasons: `Classification Derived Concept` and `Meaning of Concept Unknown`.
+  - MAINT-1792 Add new historical associations: `PARTIALLY_EQUIVALENT_TO` and `POSSIBLY_REPLACED_BY`.
+
+### Improvements
+ - Authoring
+   - FRI-341 Exclude components updated by parent branch when logging rebase changes in traceability service.
+   - MAINT-1843 Update finding Top Level Hierarchies logic.
+   - VAL-231 Update logic of DescriptionDroolsValidationService when fetching FSNs with language reference sets.
+ - General
+   - Bump log4j-api from 2.15.0 to 2.17.0 for security updates.
+   - FRI-353 Add `isNullEffectiveTime` to refset member search api for unpublished components only.
+
+### Fixes
+ - Fixes #358 ECL-cache bug fix when combining ecl and conceptIds parameters.
+ - Fixes #352 Fix daily build rollback error when large number(over 100MB) of version replaced documents found.
+ - Authoring
+   - MAINT-1842 Fix false warnings when using semantic tag pattern.
+
+## 7.5.4 Release (Dec 2021)
+Maintenance release with new features in FHIR and many improvements and fixes.
+
+### Breaking
+- Authoring
+  - MAINT-1824 Disable traceability by default.
+
+### Features
+- FHIR
+  - Designation use context FHIR extension implementation.
+- General
+  - BROWSE-429 Add URI dereference support for module and version specific URIs.
+  - BROWSE-470 Implement ECL cache and add cache stats endpoint. To disable cache update config key `cache.ecl.enabled` to false.
+- Authoring
+  - FRI-299 Add POST version of member search to allow for bulk item filtering.
+  - FRI-73 Include MDR generation when versioning content. Add MDR Preview API, cache of international modules and logic for how high up MD tree to populate.
+
+### Improvements
+- General
+  - MAINT-1746 Concepts deleted on both sides of merge do not conflict but concepts deleted on one side of the merge still conflict.
+  - MAINT-1790 Allow pagination beyond 10K reference set members.
+  - MAINT-1811 Support single character search for Korean.
+  - MAINT-1825 Refactor code system and version cache.
+  - MAINT-1827 Make code system dependant version cache thread safe.
+  - MAINT-1834 Don't output unchanged MDRS rows when exporting Delta.
+- Authoring
+  - FRI-121 Add date filter to code system versioning traceability backfill.
+  - FRI-127 Move setAuthorFlag logic from controller to service and set batch-change flag when importing.
+  - FRI-262 Update descriptor refset when creating/deleting refset to prevent duplicates. Refactor metadata for importing code system version.
+  - FRI-283 Copy release info from parent branch when merge conflict.
+  - FRI-319 Reliable deduplication of historical indicators and associations. Remove incorrect inactivation indicator member collection check.
+  - MAINT-1722 Improve on-save validation performance with drools query and branch criteria cache.
+  - MAINT-1725 Order is-a relationships top when no config for a hierarchy.
+  - MAINT-1728 Stop writing semantic updates when no logical change.
+
+### Fixes
+- Fixes #347 Log4j vulnerability by upgrading minor versions to latest.
+- Fix #264 / MAINT-1664 Async axiom conversion error handling.
+- Fixes #339 importing RF2 from local file bug.
+- FHIR
+  - Fix #322 / MAINT-1779 FHIR: default dialect and no inactive terms.
+- Authoring
+  - MAINT-1719 Fixed NPE when constructing concrete values.
+  - MAINT-1722 Val performance: fix query cache key and tweak ECL string.
+  - MAINT-1758 Fix restoration of donated content when rolling back upgrade.
+  - MAINT-1810 Fix deletion of redundant orphan relationships.
+ 
+ 
 ## 7.4.0 Release (Oct 2021)
 Minor release with bug fixes and improvements.
 

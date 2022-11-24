@@ -73,7 +73,7 @@ public class MultiSearchService implements CommitListener {
 		if (ecl != null) {
 			// ECL -> conceptIds
 			MultiBranchCriteria branchesQuery = getBranchesQuery();
-			Page<Long> page = eclQueryService.selectConceptIds(ecl, branchesQuery, "MAIN", false, LARGE_PAGE);
+			Page<Long> page = eclQueryService.selectConceptIds(ecl, branchesQuery, false, LARGE_PAGE);
 			criteria.conceptIds(page.getContent());
 		}
 
@@ -113,7 +113,7 @@ public class MultiSearchService implements CommitListener {
 		final BoolQueryBuilder descriptionQuery = boolQuery()
 				.must(branchesQuery);
 
-		descriptionService.addTermClauses(criteria.getTerm(), criteria.getSearchLanguageCodes(), criteria.getType(), descriptionQuery, criteria.getSearchMode());
+		descriptionService.addTermClauses(criteria.getTerm(), criteria.getSearchMode(), criteria.getSearchLanguageCodes(), criteria.getType(), descriptionQuery);
 
 		Boolean active = criteria.getActive();
 		if (active != null) {

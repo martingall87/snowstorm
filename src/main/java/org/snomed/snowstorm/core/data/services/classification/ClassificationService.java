@@ -30,6 +30,7 @@ import org.snomed.snowstorm.core.data.repositories.classification.RelationshipCh
 import org.snomed.snowstorm.core.data.services.*;
 import org.snomed.snowstorm.core.data.services.classification.pojo.ClassificationStatusResponse;
 import org.snomed.snowstorm.core.data.services.classification.pojo.EquivalentConceptsResponse;
+import org.snomed.snowstorm.core.data.services.traceability.TraceabilityLogService;
 import org.snomed.snowstorm.core.data.services.servicehook.CommitServiceHookClient;
 import org.snomed.snowstorm.core.pojo.LanguageDialect;
 import org.snomed.snowstorm.core.rf2.RF2Type;
@@ -58,6 +59,8 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -109,9 +112,11 @@ public class ClassificationService {
 
 	@Autowired
 	private CommitServiceHookClient commitServiceHookClient;
-
 	@Autowired
 	private ConceptAttributeSortHelper conceptAttributeSortHelper;
+
+	@Autowired
+	private RelationshipService relationshipService;
 
 	private final List<Classification> classificationsInProgress;
 	private final Map<String, SecurityContext> classificationUserIdToUserContextMap;
@@ -179,19 +184,16 @@ public class ClassificationService {
 							synchronized (classificationUserIdToUserContextMap) {
 								SecurityContextHolder.setContext(classificationUserIdToUserContextMap.get(classification.getUserId()));
 							}
-							ClassificationStatusResponse statusResponse = serviceClient.getStatus(classification.getId());
-							ClassificationStatus newStatus = statusResponse.getStatus();
-							boolean timeout = false;
+							Optional<ClassificationStatusResponse> statusChange = serviceClient.getStatusChange(classification.getId());
+							if (statusChange.isEmpty()) {
+								continue;
+							}
 
-							if (classification.getStatus() == newStatus) {
-								// No status change
-								// Check for timeout
-								if (classification.getCreationDate().before(remoteClassificationCutoffTime)) {
-									timeout = true;
-								} else {
-									// Nothing to do
-									continue;
-								}
+							ClassificationStatusResponse statusResponse = statusChange.get();
+							ClassificationStatus newStatus = statusResponse.getStatus();
+							boolean timeout = classification.getCreationDate().before(remoteClassificationCutoffTime);
+							if (classification.getStatus() == newStatus && !timeout) {
+								continue;
 							}
 
 							if (timeout || classification.getStatus() != newStatus) {
@@ -413,11 +415,25 @@ public class ClassificationService {
 							// Load concepts
 							final BranchCriteria branchCriteriaIncludingOpenCommit = versionControlHelper.getBranchCriteriaIncludingOpenCommit(commit);
 							Collection<Concept> concepts = conceptService.find(branchCriteriaIncludingOpenCommit, path, conceptToChangeMap.keySet(), Config.DEFAULT_LANGUAGE_DIALECTS);
+							Map<Long, Concept> conceptMap = concepts.stream().collect(Collectors.toMap(Concept::getConceptIdAsLong, Function.identity()));
 
 							// Apply changes to concepts
-							for (Concept concept : concepts) {
-								List<RelationshipChange> relationshipChanges = conceptToChangeMap.get(concept.getConceptIdAsLong());
-								applyRelationshipChangesToConcept(concept, relationshipChanges, false);
+							Set<String> orphanedRelationshipsToDelete = new HashSet<>();
+							for (Map.Entry<Long, List<RelationshipChange>> changes : conceptToChangeMap.entrySet()) {
+								Concept concept = conceptMap.get(changes.getKey());
+								List<RelationshipChange> relationshipChanges = changes.getValue();
+								if (concept != null) {
+									applyRelationshipChangesToConcept(concept, relationshipChanges, false);
+								} else {
+									// Concept must have been deleted. Remove orphaned inactive relationships.
+									orphanedRelationshipsToDelete.addAll(relationshipChanges.stream()
+											.filter(Predicate.not(RelationshipChange::isActive))
+											.map(RelationshipChange::getRelationshipId)
+											.collect(Collectors.toSet()));
+								}
+							}
+							if (!orphanedRelationshipsToDelete.isEmpty()) {
+								relationshipService.deleteRelationshipsWithinCommit(orphanedRelationshipsToDelete, commit);
 							}
 
 							// Update concepts
@@ -499,7 +515,7 @@ public class ClassificationService {
 				case REDUNDANT:
 					int before = concept.getRelationships().size();
 					if (!concept.getRelationships().remove(new Relationship(relationshipChange.getRelationshipId())) || concept.getRelationships().size() == before) {
-						throw new ServiceException(String.format("Failed to remove relationship %s from concept %s.", relationshipChange.getRelationshipId(), concept.getConceptId()));
+						throw new ServiceException(String.format("Failed to remove relationship '%s' from concept %s.", relationshipChange.getRelationshipId(), concept.getConceptId()));
 					}
 					break;
 			}

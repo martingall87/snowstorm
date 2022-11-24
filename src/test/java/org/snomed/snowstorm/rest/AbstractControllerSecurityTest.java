@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(SpringExtension.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, classes = TestConfig.class)
-@ActiveProfiles("secure-test")
+@ActiveProfiles(profiles = {"test", "secure-test"})
 public abstract class AbstractControllerSecurityTest extends AbstractTest {
 
 	@LocalServerPort
@@ -123,50 +123,5 @@ public abstract class AbstractControllerSecurityTest extends AbstractTest {
 		return response;
 	}
 
-
-	protected void waitForStatus(ResponseEntity<String> response, String status, HttpHeaders userHeaders) {
-		waitForStatus(response, status, userHeaders, 30);
-	}
-
-	protected void waitForStatus(ResponseEntity<String> response, String requiredStatus, HttpHeaders userHeaders, int timeoutSeconds) {
-		GregorianCalendar timeout = new GregorianCalendar();
-		timeout.add(Calendar.SECOND, timeoutSeconds);
-
-		URI location = response.getHeaders().getLocation();
-		String latestStatus;
-		do {
-			System.out.println("Get " + location.toString());
-
-			ResponseEntity<StatusHolder> responseEntity = restTemplate.exchange(new RequestEntity<>(userHeaders, HttpMethod.GET, location), StatusHolder.class);
-			assertEquals(200, responseEntity.getStatusCodeValue(), "Job status check response code.");
-
-			StatusHolder statusHolder = responseEntity.getBody();
-			if (statusHolder == null) {
-				fail("Status object is null");
-			}
-			latestStatus = statusHolder.getStatus();
-			if (requiredStatus.equals(latestStatus)) {
-				return;
-			}
-			try {
-				Thread.sleep(1_000);
-			} catch (InterruptedException e) {
-				throw new RuntimeException(e);
-			}
-		} while (new GregorianCalendar().before(timeout));
-		fail(format("Timeout while waiting for status %s, latest status was %s.", requiredStatus, latestStatus));
-	}
-
-	private static final class StatusHolder {
-		private String status;
-
-		public String getStatus() {
-			return status;
-		}
-
-		void setStatus(String status) {
-			this.status = status;
-		}
-	}
 
 }

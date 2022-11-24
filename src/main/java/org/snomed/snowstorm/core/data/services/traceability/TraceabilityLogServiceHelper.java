@@ -23,7 +23,6 @@ public class TraceabilityLogServiceHelper {
 
 	@Autowired
 	private ElasticsearchRestTemplate elasticsearchTemplate;
-
 	public <T extends SnomedComponent<T>> Iterable<T> loadChangesAndDeletionsWithinOpenCommitOnly(Class<T> clazz, BranchCriteria changesAndDeletionsWithinOpenCommitCriteria,
 			String branchPath, Commit commit) {
 
@@ -97,5 +96,4 @@ public class TraceabilityLogServiceHelper {
 		});
 		return components;
 	}
-
 }

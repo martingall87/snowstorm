@@ -20,7 +20,9 @@ public abstract class SnomedComponent<C> extends DomainEntity<C> implements IdAn
 		String MODULE_ID = "moduleId";
 		String RELEASED = "released";
 		String RELEASE_HASH = "releaseHash";
+		String RELEASED_EFFECTIVE_TIME = "releasedEffectiveTime";
 		String PATH = "path";
+		String END = "end";
 	}
 
 	@JsonView(value = View.Component.class)
@@ -110,12 +112,12 @@ public abstract class SnomedComponent<C> extends DomainEntity<C> implements IdAn
 
 	public void clearReleaseDetails() {
 		setEffectiveTimeI(null);
-		setReleased(false);
+		// Not to clear released flag to avoid published components being deleted by mistake.
 		setReleaseHash(null);
 		setReleasedEffectiveTime(null);
 	}
 
-	private String buildReleaseHash() {
+	public String buildReleaseHash() {
 		return Strings.arrayToDelimitedString(getReleaseHashObjects(), "|");
 	}
 
