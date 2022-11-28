@@ -172,7 +172,12 @@ public class BranchReviewService {
 						mergeVersion.setAutoMergedConcept(autoMergeConcept(sourceVersion, targetVersion));
 
 						// Upgrade components if behind a release/version
-						mergeVersion.setTargetConcept(upgradeComponents(sourceVersion, targetVersion));
+						boolean sameModuleAcrossComponents = isSameModuleAcrossComponents(sourceVersion, targetVersion);
+						if (!sameModuleAcrossComponents) {
+							mergeVersion.setTargetConcept(upgradeComponents(sourceVersion, targetVersion));
+						} else {
+							mergeVersion.setTargetConcept(targetVersion);
+						}
 					}
 					conflicts.put(conceptId, mergeVersion);
 				}
@@ -229,6 +234,26 @@ public class BranchReviewService {
 			throw new ServiceException("Failed to deserialise manually merged concept from temp store. mergeReview:" + mergeReview.getId() + ", conceptId:" + manuallyMergedConcept.getConceptId(), e);
 		}
 		branchMergeService.mergeBranchSync(mergeReview.getSourcePath(), mergeReview.getTargetPath(), concepts);
+	}
+
+	private boolean isSameModuleAcrossComponents(Concept sourceVersion, Concept targetVersion) {
+		Set<String> sourceModules = new HashSet<>();
+		sourceModules.add(sourceVersion.getModuleId());
+		sourceModules.addAll(sourceVersion.getRelationships().stream().map(Relationship::getModuleId).collect(Collectors.toList()));
+		sourceModules.addAll(sourceVersion.getDescriptions().stream().map(Description::getModuleId).collect(Collectors.toList()));
+		sourceModules.addAll(sourceVersion.getAllOwlAxiomMembers().stream().map(ReferenceSetMember::getModuleId).collect(Collectors.toList()));
+		sourceModules.addAll(sourceVersion.getInactivationIndicatorMembers().stream().map(ReferenceSetMember::getModuleId).collect(Collectors.toList()));
+		sourceModules.addAll(sourceVersion.getAssociationTargetMembers().stream().map(ReferenceSetMember::getModuleId).collect(Collectors.toList()));
+
+		Set<String> targetModules = new HashSet<>();
+		targetModules.add(targetVersion.getModuleId());
+		targetModules.addAll(targetVersion.getRelationships().stream().map(Relationship::getModuleId).collect(Collectors.toList()));
+		targetModules.addAll(targetVersion.getDescriptions().stream().map(Description::getModuleId).collect(Collectors.toList()));
+		targetModules.addAll(targetVersion.getAllOwlAxiomMembers().stream().map(ReferenceSetMember::getModuleId).collect(Collectors.toList()));
+		sourceModules.addAll(targetVersion.getInactivationIndicatorMembers().stream().map(ReferenceSetMember::getModuleId).collect(Collectors.toList()));
+		sourceModules.addAll(targetVersion.getAssociationTargetMembers().stream().map(ReferenceSetMember::getModuleId).collect(Collectors.toList()));
+
+		return sourceModules.containsAll(targetModules) && targetModules.containsAll(sourceModules);
 	}
 
 	private Concept upgradeComponents(Concept sourceVersion, Concept targetVersion) {
