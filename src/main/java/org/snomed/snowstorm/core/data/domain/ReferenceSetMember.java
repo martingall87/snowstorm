@@ -171,16 +171,18 @@ public class ReferenceSetMember extends SnomedComponent<ReferenceSetMember> impl
 		return memberId;
 	}
 
-	public void setMemberId(String memberId) {
+	public ReferenceSetMember setMemberId(String memberId) {
 		this.memberId = memberId;
+		return this;
 	}
 
 	public String getRefsetId() {
 		return refsetId;
 	}
 
-	public void setRefsetId(String refsetId) {
+	public ReferenceSetMember setRefsetId(String refsetId) {
 		this.refsetId = refsetId;
+		return this;
 	}
 
 	public String getReferencedComponentId() {
@@ -207,6 +209,22 @@ public class ReferenceSetMember extends SnomedComponent<ReferenceSetMember> impl
 
 	public void setAdditionalFields(Map<String, String> additionalFields) {
 		this.additionalFields = additionalFields;
+	}
+
+	public void clone(ReferenceSetMember referenceSetMember) {
+		setMemberId(referenceSetMember.getMemberId());
+		setEffectiveTimeI(referenceSetMember.getEffectiveTimeI());
+		setReleasedEffectiveTime(referenceSetMember.getReleasedEffectiveTime());
+		setReleaseHash(referenceSetMember.getReleaseHash());
+		setReleased(referenceSetMember.isReleased());
+		setActive(referenceSetMember.isActive());
+		setModuleId(referenceSetMember.getModuleId());
+		setRefsetId(referenceSetMember.getRefsetId());
+		setReferencedComponentId(referenceSetMember.getReferencedComponentId());
+		setConceptId(referenceSetMember.getConceptId());
+		setAdditionalFields(new HashMap<>(referenceSetMember.getAdditionalFields()));
+
+		updateEffectiveTime();
 	}
 
 	@Override
