@@ -195,5 +195,9 @@ public class Concepts {
 	public static final String HEART_STRUCTURE = "80891009";
 	public static final String REFERENCED_COMPONENT = "449608002";
 	public static final String CONCEPT_TYPE_COMPONENT = "900000000000461009";
+	public static final String HAS_FILLING = "827081001";
+	public static final String PHYSICAL_OBJECT = "260787004";
+	public static final String DEVICE = "49062001";
+	public static final String DOMESTIC = "272179000";
 
 }
