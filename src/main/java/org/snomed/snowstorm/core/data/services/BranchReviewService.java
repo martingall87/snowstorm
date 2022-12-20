@@ -22,6 +22,7 @@ import org.snomed.snowstorm.core.data.repositories.ManuallyMergedConceptReposito
 import org.snomed.snowstorm.core.data.repositories.MergeReviewRepository;
 import org.snomed.snowstorm.core.pojo.LanguageDialect;
 import org.snomed.snowstorm.core.util.TimerUtil;
+import org.snomed.snowstorm.rest.ControllerHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHitsIterator;
@@ -44,6 +45,7 @@ import java.util.stream.Collectors;
 import static io.kaicode.elasticvc.api.ComponentService.LARGE_PAGE;
 import static java.lang.Long.parseLong;
 import static org.elasticsearch.index.query.QueryBuilders.*;
+import static org.snomed.snowstorm.config.Config.DEFAULT_LANGUAGE_DIALECTS;
 
 @Service
 public class BranchReviewService {
@@ -77,6 +79,9 @@ public class BranchReviewService {
 
 	@Autowired
 	private ExecutorService executorService;
+
+	@Autowired
+	private Automerger automerger;
 
 	private final Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -169,7 +174,12 @@ public class BranchReviewService {
 				} else {
 					if (sourceVersion != null && targetVersion != null) {
 						// Neither deleted, auto-merge.
-						mergeVersion.setAutoMergedConcept(autoMergeConcept(sourceVersion, targetVersion));
+						Concept targetVersionBefore = conceptService.find(
+								sourceVersion.getConceptId(),
+								DEFAULT_LANGUAGE_DIALECTS,
+								ControllerHelper.parseBranchTimepoint(mergeReview.getTargetPath() + "@-")
+						);
+						mergeVersion.setAutoMergedConcept(automerger.automerge(sourceVersion, targetVersionBefore, targetVersion));
 
 						// Upgrade components if behind a release/version
 						mergeVersion.setTargetConcept(upgradeComponents(sourceVersion, targetVersion));
@@ -217,7 +227,12 @@ public class BranchReviewService {
 				if (sourceConceptVersioned && concept == null) {
 					concept = sourceConcept;
 				} else if (sourceConceptVersioned && !concept.isReleased() && concept.getReleasedEffectiveTime() == null) {
-					concept = autoMergeConcept(sourceConcept, concept);
+					Concept targetVersionBefore = conceptService.find(
+							sourceConcept.getConceptId(),
+							DEFAULT_LANGUAGE_DIALECTS,
+							ControllerHelper.parseBranchTimepoint(mergeReview.getTargetPath() + "@-")
+					);
+					concept = automerger.automerge(sourceConcept, targetVersionBefore, concept);
 				} else if (manuallyMergedConcept.isDeleted()) {
 					concept = new Concept(manuallyMergedConcept.getConceptId().toString());
 					concept.markDeleted();
@@ -323,38 +338,6 @@ public class BranchReviewService {
 		Set<Long> sourceToTargetReviewChanges = sourceToTargetReview.getChangedConcepts();
 		Set<Long> targetToSourceReviewChanges = targetToSourceReview.getChangedConcepts();
 		return Sets.intersection(sourceToTargetReviewChanges, targetToSourceReviewChanges);
-	}
-
-	private Concept autoMergeConcept(Concept sourceConcept, Concept targetConcept) {
-		final Concept mergedConcept = new Concept();
-
-		// In each component favour the source version unless only the target is unpublished
-		Concept winningConcept = sourceConcept.getEffectiveTimeI() != null && targetConcept.getEffectiveTimeI() == null ? targetConcept : sourceConcept;
-
-		// Set directly owned values
-		mergedConcept.setConceptId(winningConcept.getConceptId());
-		mergedConcept.setActive(winningConcept.isActive());
-		mergedConcept.setDefinitionStatus(winningConcept.getDefinitionStatus());
-		mergedConcept.setEffectiveTimeI(winningConcept.getEffectiveTimeI());
-		mergedConcept.setModuleId(winningConcept.getModuleId());
-		mergedConcept.setReleased(winningConcept.isReleased());
-		mergedConcept.setReleaseHash(winningConcept.getReleaseHash());
-		mergedConcept.setReleasedEffectiveTime(winningConcept.getReleasedEffectiveTime());
-
-		mergedConcept.setInactivationIndicator(winningConcept.getInactivationIndicator());
-		mergedConcept.setAssociationTargets(winningConcept.getAssociationTargets());
-
-		// Merge Descriptions
-		mergedConcept.setDescriptions(mergeComponentSets(sourceConcept.getDescriptions(), targetConcept.getDescriptions()));
-
-		// Merge Relationships
-		mergedConcept.setRelationships(mergeComponentSets(sourceConcept.getRelationships(), targetConcept.getRelationships()));
-
-		// Merge Axioms
-		mergedConcept.setClassAxioms(mergeComponentSets(sourceConcept.getClassAxioms(), targetConcept.getClassAxioms()));
-		mergedConcept.setGciAxioms(mergeComponentSets(sourceConcept.getGciAxioms(), targetConcept.getGciAxioms()));
-
-		return mergedConcept;
 	}
 
 	private <T extends IdAndEffectiveTimeComponent> Set<T> mergeComponentSets(Set<T> sourceComponents, Set<T> targetComponents) {
