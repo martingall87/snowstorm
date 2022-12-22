@@ -141,7 +141,7 @@ public class Axiom implements IdAndEffectiveTimeComponent {
         if (relationships != null && !relationships.isEmpty()) {
             for (Relationship relationship : relationships) {
                 Relationship clone = new Relationship();
-                relationship.clone(relationship);
+				clone.clone(relationship);
                 clonedRelationships.add(clone);
             }
             setRelationships(clonedRelationships);

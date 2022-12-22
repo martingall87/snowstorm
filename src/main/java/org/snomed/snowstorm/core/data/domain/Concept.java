@@ -479,9 +479,9 @@ public class Concept extends SnomedComponent<Concept> implements ConceptView, Sn
 
 		// GCI Axioms
 		Set<Axiom> gciAxioms = new HashSet<>();
-		for (Axiom classAxiom : concept.getGciAxioms()) {
+		for (Axiom gciAxiom : concept.getGciAxioms()) {
 			Axiom clone = new Axiom();
-			clone.clone(classAxiom);
+			clone.clone(gciAxiom);
 			gciAxioms.add(clone);
 		}
 
