@@ -328,7 +328,11 @@ public class Automerger {
             // Didn't exist before user started authoring; nothing to re-apply.
             if (sourceAxiom == null || targetAxiomOld == null) {
                 mergedAxiom = targetAxiomNew;
-                mergedReferenceSetMember = targetAxiomNew.getReferenceSetMember();
+
+                ReferenceSetMember targetMember = targetAxiomNew.getReferenceSetMember();
+                if (targetMember != null) {
+                    mergedReferenceSetMember = targetMember;
+                }
             } else {
                 // Re-apply fields on Axiom
                 mergedAxiom.setAxiomId(sourceAxiom.getAxiomId());
