@@ -2938,7 +2938,7 @@ class BranchMergeServiceTest extends AbstractTest {
 		conflicts = reviewService.getMergeReviewConflictingConcepts(review.getId(), new ArrayList<>());
 		assertEquals(1, conflicts.size()); // Both authors have changed the original translation
 
-		// 14. Author B prefers Author A's re-termed translation
+		// 14. Author B's re-term is preferred
 		for (MergeReviewConceptVersions conflict : conflicts) {
 			Concept autoMergedConcept = conflict.getAutoMergedConcept();
 			reviewService.persistManuallyMergedConcept(review, Long.parseLong(cinnamonId), autoMergedConcept);
@@ -2977,14 +2977,14 @@ class BranchMergeServiceTest extends AbstractTest {
 		assertTrue(description.isReleased());
 		assertTrue(description.isActive());
 
-		description = getDescription(concept, "Kanelbulles");
+		description = getDescription(concept, "Kanelbullar");
 		assertNull(description.getEffectiveTimeI());
 		assertNull(description.getReleasedEffectiveTime());
 		assertEquals(extModule, description.getModuleId());
 		assertFalse(description.isReleased());
 		assertTrue(description.isActive());
 
-		description = getDescription(concept, "Kanelbullar");
+		description = getDescription(concept, "Kanelbulles");
 		assertNull(description);
 	}
 
