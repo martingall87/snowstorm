@@ -177,7 +177,7 @@ public class BranchReviewService {
 						Concept targetVersionBefore = conceptService.find(
 								sourceVersion.getConceptId(),
 								DEFAULT_LANGUAGE_DIALECTS,
-								ControllerHelper.parseBranchTimepoint(mergeReview.getTargetPath() + "@-")
+								ControllerHelper.parseBranchTimepoint(mergeReview.getTargetPath() + "@^")
 						);
 						mergeVersion.setAutoMergedConcept(automerger.automerge(sourceVersion, targetVersionBefore, targetVersion));
 
@@ -230,7 +230,7 @@ public class BranchReviewService {
 					Concept targetVersionBefore = conceptService.find(
 							sourceConcept.getConceptId(),
 							DEFAULT_LANGUAGE_DIALECTS,
-							ControllerHelper.parseBranchTimepoint(mergeReview.getTargetPath() + "@-")
+							ControllerHelper.parseBranchTimepoint(mergeReview.getTargetPath() + "@^")
 					);
 					concept = automerger.automerge(sourceConcept, targetVersionBefore, concept);
 				} else if (manuallyMergedConcept.isDeleted()) {
