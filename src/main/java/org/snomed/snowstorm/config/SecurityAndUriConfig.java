@@ -36,6 +36,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.annotation.web.configurers.ExpressionUrlAuthorizationConfigurer;
+import org.springframework.security.config.annotation.web.configurers.oauth2.server.resource.OAuth2ResourceServerConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.FilterSecurityInterceptor;
 import org.springframework.security.web.firewall.DefaultHttpFirewall;
@@ -60,6 +61,9 @@ public class SecurityAndUriConfig {
 
 	@Value("${ims-security.required-role}")
 	private String requiredRole;
+
+	@Value("${security.oauth2.enabled}")
+	private boolean oauth2Enabled;
 
 	@Value("${json.serialization.indent_output}")
 	private boolean jsonIndentOutput;
@@ -189,6 +193,13 @@ public class SecurityAndUriConfig {
 					.anyRequest().authenticated()
 					.and().exceptionHandling().accessDeniedHandler(new AccessDeniedExceptionHandler())
 					.and().httpBasic();
+		} else if (oauth2Enabled) {
+			http.authorizeRequests()
+				.antMatchers(excludedUrlPatterns).permitAll()
+				.anyRequest().authenticated()
+				.and().exceptionHandling().accessDeniedHandler(new AccessDeniedExceptionHandler())
+				.and()
+				.oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt);
 		}
 		return http.build();
 	}
